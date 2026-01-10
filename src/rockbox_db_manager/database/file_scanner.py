@@ -169,7 +169,8 @@ class FileScanner:
             mtime: Optional modification time (read if not provided)
             tags: Optional pre-read tags (read if not provided)
         """
-        path_obj = Path(path).resolve()
+        # Use absolute path but don't resolve() to preserve case from filesystem
+        path_obj = Path(path).absolute()
         path = str(path_obj)
         lowerpath = path.lower()
 
@@ -206,7 +207,7 @@ class FileScanner:
                 TagCache.set(lowerpath, ((size, mtime), minimal_tags))
                 # Move to end after update
                 TagCache.move_to_end(lowerpath)
-        paths_set.add(lowerpath)
+        paths_set.add(path)
 
     def add_files(
         self,

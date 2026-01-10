@@ -70,6 +70,9 @@ class Database:
         self.config = config if config is not None else Config()
         self.ipod_root = ipod_root
 
+        # Get mount notation from config (auto-detected via detect-mounts command)
+        mount_notation = self.config.get_mount_notation()
+
         # Set database version from config BEFORE calling clear()
         db_version = self.config.get_database_version()
         if db_version == 16:
@@ -97,7 +100,9 @@ class Database:
         # Initialize scanner and generator with configured workers and ipod_root
         self._scanner = FileScanner(max_workers=self.max_workers)
         self._generator = DatabaseGenerator(
-            max_workers=self.max_workers, ipod_root=ipod_root
+            max_workers=self.max_workers,
+            ipod_root=ipod_root,
+            mount_notation=mount_notation,
         )
 
         # Set default formats

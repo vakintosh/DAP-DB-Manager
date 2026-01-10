@@ -123,7 +123,13 @@ rockbox-db-manager-gui
 ## Quick Start
 
 ```bash
-# Generate a database
+# First-time setup: Detect mount notation (e.g., /<HDD0>)
+# Run this BEFORE generating your first database
+rdbm detect-mounts --db-dir /path/to/.rockbox
+# If no database exists yet, manually set it:
+rdbm detect-mounts --db-dir /path/to/.rockbox --set-mount "/<HDD0>"
+
+# Generate a database (mount notation auto-applied from config)
 rdbm generate --music-dir /path/to/music --output /path/to/.rockbox
 
 # Validate database integrity
@@ -147,6 +153,7 @@ The `rdbm` command provides several subcommands for database management:
 
 - **`generate`** - Create Rockbox database from music folder
 - **`update`** - Update database with new/deleted files (delta update)
+- **`detect-mounts`** - Detect or set Rockbox mount notation (e.g., /<HDD0>)
 - **`load`** - Display existing database information
 - **`validate`** - Check database integrity
 - **`inspect`** - Low-level file inspection
@@ -175,6 +182,11 @@ rdbm update --help       # Help for update command
 **Solution**: Use `--ipod-root` to build database on laptop with correct path translation:
 
 ```bash
+# Step 1: Detect mount notation (first time only)
+rdbm detect-mounts --db-dir /Volumes/IPOD/.rockbox
+# Auto-detects /<HDD0> and saves to config
+
+# Step 2: Generate database
 # macOS - iPod mounted at /Volumes/IPOD
 rdbm generate \
   --music-dir /Volumes/IPOD/Music \
@@ -196,7 +208,8 @@ rdbm update \
 
 **How it works:**
 - Laptop path: `/Volumes/IPOD/Music/Song.mp3`
-- Database path: `/Music/Song.mp3` (iPod-relative)
+- After `--ipod-root` translation: `/Music/Song.mp3`
+- After mount notation: `/<HDD0>/Music/Song.mp3` (as Rockbox expects)
 - **180x faster** than building on device
 - **Zero battery drain**
 

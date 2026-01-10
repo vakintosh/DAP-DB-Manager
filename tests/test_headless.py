@@ -347,12 +347,12 @@ if __name__ == "__main__":
             # Use actual test files from music_test_folder if available
             source_music = Path("music_test_folder")
             if not source_music.exists():
-                print("⚠️  Warning: music_test_folder not found - tests may not work")
+                print(" Warning: music_test_folder not found - tests may not work")
                 sys.exit(1)
 
             source_files = list(source_music.rglob("*.mp3"))
             if not source_files:
-                print("⚠️  Warning: No MP3 files found in music_test_folder")
+                print(" Warning: No MP3 files found in music_test_folder")
                 sys.exit(1)
 
             source_mp3 = source_files[0]

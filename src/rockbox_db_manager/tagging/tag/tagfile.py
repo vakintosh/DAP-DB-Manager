@@ -46,13 +46,13 @@ class TagFile:
             self.offsets[f.tell()] = entry
             entry.to_file(f)
 
-    def write(self, filename, buffer_size=None):
-        """Write tag file to disk with optional buffering for better I/O performance.
+    def write(self, filename, buffer_size=1048576):
+        """Write tag file to disk with optimized buffering for better I/O performance.
 
         Args:
             filename: Path to write the tag file
-            buffer_size: Optional buffer size in bytes. If None, uses system default.
-                        Recommended: 262144 (256KB) for optimal performance on modern systems.
+            buffer_size: Buffer size in bytes. Default: 1MB (1048576) for optimal performance.
+                        Set to None to use system default (~8KB).
         """
         if buffer_size is not None:
             with open(filename, "wb", buffering=buffer_size) as f:

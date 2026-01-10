@@ -37,7 +37,10 @@ class DatabaseGenerator:
     """Handles database generation from cached tags with parallel processing."""
 
     def __init__(
-        self, max_workers: Optional[int] = None, ipod_root: Optional[str] = None
+        self,
+        max_workers: Optional[int] = None,
+        ipod_root: Optional[str] = None,
+        mount_notation: Optional[str] = None,
     ):
         """Initialize the database generator.
 
@@ -48,6 +51,9 @@ class DatabaseGenerator:
                       When set, strips this prefix from file paths to create iPod-relative paths.
                       Example: ipod_root="/Volumes/IPOD" converts "/Volumes/IPOD/Music/Song.mp3"
                       to "/Music/Song.mp3" in the database.
+            mount_notation: Optional Rockbox mount notation to prepend to paths.
+                           Example: "/<HDD0>" prepends "/<HDD0>" to all paths.
+                           Typically auto-detected from existing database via detect-mounts command.
         """
         if max_workers is None:
             # For mixed I/O and CPU-bound operations, use moderate worker count
@@ -55,6 +61,7 @@ class DatabaseGenerator:
             max_workers = min(32, (os.cpu_count() or 1) + 4)
         self.max_workers = max_workers
         self.ipod_root = self._normalize_ipod_root(ipod_root)
+        self.mount_notation = mount_notation.rstrip("/") if mount_notation else ""
         self._lock = Lock()
 
         # Persistent thread pool - reused across operations for better performance
@@ -183,7 +190,9 @@ class DatabaseGenerator:
         cache = TagCache.get_cache()
 
         for i, path in enumerate(sorted_paths, 1):
-            (size, mtime), tags = cache[path]
+            # Cache uses lowercase keys for case-insensitive lookups
+            lowerpath = path.lower()
+            (size, mtime), tags = cache[lowerpath]
 
             # Path translation for cross-compilation
             # When building on a laptop for an iPod, we need to translate paths
@@ -198,6 +207,10 @@ class DatabaseGenerator:
                     # Ensure path starts with /
                     if not clean_path.startswith("/"):
                         clean_path = "/" + clean_path
+
+                    # Prepend mount notation if specified
+                    if self.mount_notation:
+                        clean_path = self.mount_notation + clean_path
                 else:
                     # Path doesn't start with ipod_root - log warning and skip
                     logging.warning(
@@ -220,6 +233,10 @@ class DatabaseGenerator:
                 )
                 if not clean_path.startswith("/"):
                     clean_path = "/" + clean_path
+
+                # Prepend mount notation if specified
+                if self.mount_notation:
+                    clean_path = self.mount_notation + clean_path
 
             if callback and i % batch_size == 0:
                 callback(i, total_paths)
@@ -256,7 +273,9 @@ class DatabaseGenerator:
             batch_results = []
             for path in paths_batch:
                 try:
-                    (size, mtime), tags = cache[path]
+                    # Cache uses lowercase keys for case-insensitive lookups
+                    lowerpath = path.lower()
+                    (size, mtime), tags = cache[lowerpath]
                 except KeyError:
                     # File not in cache - skip it (should not happen if cache is up to date)
                     # This occurs when scanning a folder that wasn't included in the tag cache
@@ -310,6 +329,10 @@ class DatabaseGenerator:
                         )
                         if not clean_path.startswith("/"):
                             clean_path = "/" + clean_path
+
+                    # Prepend mount notation if specified
+                    if self.mount_notation:
+                        clean_path = self.mount_notation + clean_path
 
                     # Create entry data
                     entry_data = {"path": clean_path, "mtime": mtime, "tags": tags}

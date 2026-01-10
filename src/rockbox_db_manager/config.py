@@ -7,7 +7,7 @@ window positions, and last used directories.
 import copy
 import tomllib
 from pathlib import Path
-from typing import Dict, Any, Tuple, TYPE_CHECKING
+from typing import Dict, Any, Tuple, Optional, TYPE_CHECKING
 
 if TYPE_CHECKING:
     import psutil as psutil_module
@@ -93,6 +93,13 @@ class Config:
             # Database version: 16 (only supported version)
             # Version 16 is for recent Rockbox builds
             "version": 16,
+            # Rockbox mount notation (e.g., "/<HDD0>", "/<MMC0>")
+            # Auto-detected on first generate/update if not set
+            # Set to empty string for no mount notation
+            "mount_notation": "",
+            # Tracks whether mount notation has been auto-detected/configured
+            # Used to trigger automatic detection on first run
+            "mount_notation_configured": False,
         },
         "performance": {
             # Maximum memory usage for tag cache in megabytes
@@ -305,6 +312,88 @@ class Config:
             self.data["database"] = {}
         self.data["database"]["version"] = version
         self._dirty = True
+
+    def get_mount_notation(self) -> str:
+        """Get Rockbox mount notation.
+
+        Returns:
+            Mount notation string (e.g., "/<HDD0>") or empty string if not set
+        """
+        return str(self.data.get("database", {}).get("mount_notation", ""))
+
+    def set_mount_notation(self, notation: str) -> None:
+        """Set Rockbox mount notation and mark as configured.
+
+        Args:
+            notation: Mount notation (e.g., "/<HDD0>", "/<MMC0>") or empty string
+        """
+        if "database" not in self.data:
+            self.data["database"] = {}
+        self.data["database"]["mount_notation"] = notation
+        self.data["database"]["mount_notation_configured"] = True
+        self._dirty = True
+
+    def is_mount_notation_configured(self) -> bool:
+        """Check if mount notation has been configured.
+
+        Returns:
+            True if mount notation has been set (manually or auto-detected)
+        """
+        return bool(
+            self.data.get("database", {}).get("mount_notation_configured", False)
+        )
+
+    def auto_detect_mount_notation(
+        self, device_path: str, callback=None
+    ) -> Optional[str]:
+        """Automatically detect and configure mount notation from device.
+
+        Args:
+            device_path: Path to device root or .rockbox directory
+            callback: Optional callback for logging messages
+
+        Returns:
+            Detected mount notation or None if detection failed
+        """
+        from .database.mount_detector import MountDetector
+
+        try:
+            if callback:
+                callback("Auto-detecting Rockbox mount notation...")
+
+            # Use storage-based detection (source of truth)
+            mounts = MountDetector.detect_from_device_storage(device_path)
+
+            if mounts:
+                notation = mounts[0]  # Primary mount
+                self.set_mount_notation(notation)
+                self.save()
+
+                if callback:
+                    callback(f"✓ Detected mount notation: {notation}")
+                    if len(mounts) > 1:
+                        callback(f"  Additional mounts: {', '.join(mounts[1:])}")
+                    callback(f"  Saved to config: {get_config_path()}")
+
+                return notation
+            else:
+                if callback:
+                    callback(
+                        "⚠ Could not detect mount notation - using default /<HDD0>"
+                    )
+                # Set default and mark as configured
+                self.set_mount_notation("/<HDD0>")
+                self.save()
+                return "/<HDD0>"
+
+        except Exception as e:
+            if callback:
+                callback(f"⚠ Mount detection failed: {e}")
+                callback("  Using default /<HDD0>")
+            # Set default and mark as configured to avoid retrying
+            self.set_mount_notation("/<HDD0>")
+            self.save()
+            return "/<HDD0>"
 
     # Performance settings
     def get_tag_cache_memory(self) -> int:

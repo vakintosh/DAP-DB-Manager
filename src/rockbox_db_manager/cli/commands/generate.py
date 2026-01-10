@@ -99,8 +99,27 @@ def cmd_generate(args: argparse.Namespace) -> None:
             )
             sys.exit(ExitCode.INVALID_INPUT)
 
+    # Load configuration
+    config = Config()
+
+    # Auto-detect mount notation on first run if not configured
+    if not config.is_mount_notation_configured():
+        device_path = ipod_root if ipod_root else args.output
+        if not use_json:
+            logging.info("First run detected - auto-detecting mount notation...")
+        config.auto_detect_mount_notation(
+            device_path, callback=logging.info if not use_json else None
+        )
+
     # Create database instance
-    db = Database(ipod_root=ipod_root)
+    db = Database(config=config, ipod_root=ipod_root)
+
+    # Log mount notation
+    mount_notation = db.config.get_mount_notation()
+    if mount_notation:
+        logging.info("Using mount notation: %s", mount_notation)
+    else:
+        logging.info("No mount notation configured (paths will use simple format)")
 
     # Suppress console output if JSON mode
     console = Console(quiet=use_json)

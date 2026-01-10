@@ -138,6 +138,24 @@ def cmd_update(args: argparse.Namespace) -> None:
             )
             sys.exit(ExitCode.INVALID_INPUT)
 
+    # Load configuration and auto-detect mount notation if needed
+    from ...config import Config
+
+    config = Config()
+
+    # Auto-detect mount notation on first run if not configured
+    if not config.is_mount_notation_configured():
+        device_path = ipod_root if ipod_root else db_path
+        if not use_json:
+            console.print(
+                "[cyan]First run detected - auto-detecting mount notation...[/cyan]"
+            )
+        config.auto_detect_mount_notation(
+            device_path, callback=console.print if not use_json else None
+        )
+        if not use_json:
+            console.print()
+
     # Load existing database
     console.print(f"\n[cyan]Loading existing database from:[/cyan] {db_path}")
     try:
@@ -147,6 +165,8 @@ def cmd_update(args: argparse.Namespace) -> None:
             else lambda msg, **kwargs: None
         )
         db = Database.read(str(db_path), callback=callback, ipod_root=ipod_root)
+        # Update config reference to use the one with auto-detected mount
+        db.config = config
     except Exception as e:
         if use_json:
             json_output(
@@ -160,6 +180,14 @@ def cmd_update(args: argparse.Namespace) -> None:
 
     original_count = db.index.count
     console.print(f"[green]✓[/green] Loaded database with {original_count:,} entries\n")
+
+    # Log mount notation
+    mount_notation = db.config.get_mount_notation()
+    if mount_notation:
+        logging.info("Using mount notation: %s", mount_notation)
+        console.print(f"[dim]Mount notation:[/dim] [cyan]{mount_notation}[/cyan]\n")
+    else:
+        logging.info("No mount notation configured (paths will use simple format)")
 
     # Update database
     console.print(f"[cyan]Updating database from:[/cyan] {music_path}\n")
