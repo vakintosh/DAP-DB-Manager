@@ -1,4 +1,4 @@
-# Tests for Rockbox Database Manager
+# Tests for DAP DB Manager
 
 This directory contains unit tests for the core functionality.
 
@@ -8,7 +8,7 @@ This directory contains unit tests for the core functionality.
 
 ```bash
 # Install dev dependencies (includes pytest)
-cd /path/to/rockbox-db-manager
+cd /path/to/dap-db-manager
 uv sync --group dev
 
 # Run all tests
@@ -37,7 +37,7 @@ pytest
 pytest -v
 
 # With coverage
-pytest --cov=rockbox_db_manager --cov-report=html
+pytest --cov=dap_db_manager --cov-report=html
 ```
 
 ## Test Structure

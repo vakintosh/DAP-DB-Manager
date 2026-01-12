@@ -12,10 +12,10 @@ import time
 import pytest
 from pathlib import Path
 
-from rockbox_db_manager.database import Database
-from rockbox_db_manager.tagging.tag.tagfile import TagFile, TagEntry
-from rockbox_db_manager.tagging.titleformat import statement
-from rockbox_db_manager.utils import mtime_to_fat, fat_to_mtime
+from dap_db_manager.database import Database
+from dap_db_manager.tagging.tag.tagfile import TagFile, TagEntry
+from dap_db_manager.tagging.titleformat import statement
+from dap_db_manager.utils import mtime_to_fat, fat_to_mtime
 
 
 BASELINE_FILE = Path(__file__).parent / ".performance_baselines.json"

@@ -4,8 +4,8 @@ import pytest
 import tempfile
 from pathlib import Path
 
-from rockbox_db_manager.config import Config
-from rockbox_db_manager.database.cache import TagCache
+from dap_db_manager.config import Config
+from dap_db_manager.database.cache import TagCache
 
 
 class TestConfigCacheSize:

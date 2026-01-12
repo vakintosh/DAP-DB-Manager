@@ -1,17 +1,17 @@
 # =============================================================================
-# Rockbox Database Manager Configuration Example
+# DAP DB Manager Configuration Example
 # =============================================================================
 #
-# This file demonstrates all available configuration options for the Rockbox
-# Database Manager. Copy this file to ~/.rdbm/.rdbm_config.toml and customize
+# This file demonstrates all available configuration options for the DAP
+# Database Manager. Copy this file to ~/.ddm/.rdbm_config.toml and customize
 # it to your needs.
 #
 # Configuration File Location:
-#   - Linux/macOS: ~/.rdbm/.rdbm_config.toml
-#   - Windows: %USERPROFILE%\.rdbm\.rdbm_config.toml
+#   - Linux/macOS: ~/.ddm/.rdbm_config.toml
+#   - Windows: %USERPROFILE%\.ddm\.rdbm_config.toml
 #
 # Or specify a custom location using the -c/--config flag:
-#   rdbm generate /path/to/music -c /path/to/custom_config.toml
+#   ddm generate /path/to/music -c /path/to/custom_config.toml
 #
 # =============================================================================
 
@@ -63,7 +63,6 @@ last_tags_file = ""
 [database]
 # Database version to generate
 # Options:
-#   13 - Legacy format (compatible with older Rockbox builds)
 #   16 - Current format (recommended for recent Rockbox builds)
 # Default: 16
 version = 16
@@ -98,10 +97,13 @@ version = 16
 
 [formats]
 # ARTIST - How artist names are displayed
-# Default: Simple artist tag
-artist = "%artist%"
+# Default: Prefer album artist for consistency (compilation-friendly)
+artist = "$if(%album artist%,%album artist%,%artist%)"
 
 # Examples:
+# Simple artist tag only:
+# artist = "%artist%"
+#
 # Multiple artists (creates separate entries for each artist):
 # artist = "%<artist>%"
 #
@@ -142,7 +144,7 @@ composer = "%composer%"
 # composer = "$if($strstr(%composer%,','),%composer%,$replace(%composer%,', ',' '))"
 
 # COMMENT - Custom comment field
-# Default: Simple comment tag
+# Default: Simple comment tag (optional - uncomment to use)
 # comment = "%comment%"
 
 # Examples:
@@ -150,16 +152,20 @@ composer = "%composer%"
 # comment = "$if(%label%,Label: %label%,)"
 
 # ALBUM ARTIST - The main artist for an album
-# Default: Simple albumartist tag, fallback to artist
-# album artist = "$if2(%albumartist%,%artist%)"
+# Default: Album artist tag (creates separate albumartist browsing in Rockbox)
+albumartist = "%album artist%"
 
 # Examples:
+# Fallback to track artist:
+# albumartist = "$if2(%album artist%,%artist%)"
+#
 # Use "Various Artists" for compilations:
-# album artist = "$if(%compilation%,Various Artists,$if2(%albumartist%,%artist%))"
+# albumartist = "$if(%compilation%,Various Artists,$if2(%album artist%,%artist%))"
 
 # GROUPING - Custom grouping/classification field
-# Default: Uses title (not commonly used)
-grouping = "%title%"
+# Default: Uses grouping tag, falls back to title
+# Only uncomment if you use the grouping tag in your files
+# grouping = "$if2(%grouping%,%title%)"
 
 # Examples:
 # Group by decade:
@@ -338,24 +344,24 @@ composer = ""
 #    Before generating a full database, test your format strings on a small
 #    subset of your music collection to ensure they work as expected.
 #
-#    Use: rdbm generate /path/to/test/folder --log-level debug
+#    Use: ddm generate /path/to/test/folder --log-level debug
 #
 # 3. **Regenerating the Database**:
 #    After changing format strings, you must regenerate the database:
 #
 #    rm -rf .rockbox
-#    rdbm generate /path/to/music -c ~/.rdbm/.rdbm_config.toml
+#    ddm generate /path/to/music -c ~/.ddm/.rdbm_config.toml
 #
 # 4. **Tag Cache for Speed**:
 #    For large collections, use tag caching to speed up regeneration:
 #
-#    First time: rdbm generate /music --save-tags ~/.rockbox_tags.cache
-#    Later:      rdbm generate /music --load-tags ~/.rockbox_tags.cache
+#    First time: ddm generate /music --save-tags ~/.rockbox_tags.cache
+#    Later:      ddm generate /music --load-tags ~/.rockbox_tags.cache
 #
 # 5. **Validation**:
 #    Always validate your database after generation:
 #
-#    rdbm validate /path/to/.rockbox
+#    ddm validate /path/to/.rockbox
 #
 # 6. **Titleformat Documentation**:
 #    Full titleformat syntax reference:

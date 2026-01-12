@@ -20,16 +20,16 @@ FROM python:3.11-slim
 RUN apt-get purge -y --allow-remove-essential --auto-remove apt && \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/*
 
-RUN useradd --create-home --shell /bin/bash --uid 1000 rdbm
+RUN useradd --create-home --shell /bin/bash --uid 1000 ddm
 
-RUN mkdir -p /input /output /tmp /home/rdbm/.cache && \
-    chown -R rdbm:rdbm /input /output /tmp /home/rdbm
+RUN mkdir -p /input /output /tmp /home/ddm/.cache && \
+    chown -R ddm:ddm /input /output /tmp /home/ddm
 
 COPY --from=builder /opt/venv /opt/venv
 
 ENV PATH="/opt/venv/bin:$PATH"
 
-USER rdbm
+USER ddm
 
 VOLUME ["/input", "/output", "/tmp"]
 
@@ -40,11 +40,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONHASHSEED=random
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=1 \
-    CMD ["rdbm", "--version"]
+    CMD ["ddm", "--version"]
 
 LABEL security.readonly_root="true" \
       security.capabilities_drop="ALL" \
       security.run_as_user="1000"
 
-ENTRYPOINT ["rdbm"]
+ENTRYPOINT ["ddm"]
 CMD ["--help"]

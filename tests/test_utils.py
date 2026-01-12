@@ -1,7 +1,7 @@
 """Tests for utility functions (time conversions, etc.)."""
 
 import time
-from rockbox_db_manager.utils import mtime_to_fat, fat_to_mtime
+from dap_db_manager.utils import mtime_to_fat, fat_to_mtime
 
 
 class TestTimeConversions:

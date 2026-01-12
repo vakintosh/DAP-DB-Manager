@@ -1,6 +1,6 @@
 """Integration tests for CLI automation reliability.
 
-Tests that RDBM behaves predictably in automated environments:
+Tests that DDM behaves predictably in automated environments:
 - Deterministic output (same input → same output)
 - No side effects on input files
 - Correct exit codes for different failure modes
@@ -100,7 +100,7 @@ def hash_dir(directory: Path) -> str:
 
 
 def run_rdbm(args: list, check: bool = False) -> subprocess.CompletedProcess:
-    """Run RDBM command with uv.
+    """Run DDM command with uv.
 
     Args:
         args: Command arguments (e.g., ["generate", "--music-dir=/path"])
@@ -109,7 +109,7 @@ def run_rdbm(args: list, check: bool = False) -> subprocess.CompletedProcess:
     Returns:
         CompletedProcess instance
     """
-    cmd = ["uv", "run", "rdbm"] + args
+    cmd = ["uv", "run", "ddm"] + args
     return subprocess.run(
         cmd,
         capture_output=True,
@@ -119,7 +119,7 @@ def run_rdbm(args: list, check: bool = False) -> subprocess.CompletedProcess:
 
 
 def test_idempotence(test_env):
-    """Test that running RDBM twice produces identical output.
+    """Test that running DDM twice produces identical output.
 
     This ensures deterministic behavior for automation.
     """
@@ -158,7 +158,7 @@ def test_idempotence(test_env):
 
 
 def test_readonly_input(test_env):
-    """Test that RDBM never modifies input files.
+    """Test that DDM never modifies input files.
 
     Critical for shared NAS environments.
     """
@@ -269,7 +269,7 @@ def test_validate_exit_codes(test_env):
 
 
 def test_no_hidden_dependencies(test_env):
-    """Test that RDBM doesn't rely on current working directory or env vars."""
+    """Test that DDM doesn't rely on current working directory or env vars."""
     input_dir = test_env["input_dir"]
     output_dir = test_env["output_dir"]
 
@@ -278,7 +278,7 @@ def test_no_hidden_dependencies(test_env):
         [
             "uv",
             "run",
-            "rdbm",
+            "ddm",
             "generate",
             f"--music-dir={input_dir.absolute()}",
             f"--output={output_dir.absolute()}",
@@ -289,12 +289,12 @@ def test_no_hidden_dependencies(test_env):
     )
 
     assert result.returncode == 0, (
-        "RDBM should work regardless of current working directory (no implicit cwd usage)"
+        "DDM should work regardless of current working directory (no implicit cwd usage)"
     )
 
 
 def test_output_isolation(test_env):
-    """Test that RDBM only writes to the specified output directory."""
+    """Test that DDM only writes to the specified output directory."""
     input_dir = test_env["input_dir"]
     output_dir = test_env["output_dir"]
 
@@ -318,7 +318,7 @@ def test_output_isolation(test_env):
     new_files = after_files - before_files
     for f in new_files:
         assert output_dir in f.parents or f == output_dir, (
-            f"File {f} created outside output directory! RDBM must not create files elsewhere."
+            f"File {f} created outside output directory! DDM must not create files elsewhere."
         )
 
 

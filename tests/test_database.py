@@ -2,9 +2,9 @@
 
 import tempfile
 from pathlib import Path
-from rockbox_db_manager.database import Database
-from rockbox_db_manager.constants import FORMATTED_TAGS
-from rockbox_db_manager.database import myprint
+from dap_db_manager.database import Database
+from dap_db_manager.constants import FORMATTED_TAGS
+from dap_db_manager.database import myprint
 
 
 class TestDatabase:

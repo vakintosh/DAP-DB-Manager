@@ -1,4 +1,4 @@
-"""CPU Efficiency Test Suite for Rockbox Database Manager.
+"""CPU Efficiency Test Suite for DAP DB Manager.
 
 This comprehensive test suite verifies CPU efficiency across:
 - Parallel processing (multiprocessing vs threading)
@@ -25,8 +25,8 @@ try:
 except ImportError:
     HAS_PSUTIL = False
 
-from rockbox_db_manager.database import Database
-from rockbox_db_manager.database.cache import TagCache
+from dap_db_manager.database import Database
+from dap_db_manager.database.cache import TagCache
 
 
 pytestmark = pytest.mark.skipif(

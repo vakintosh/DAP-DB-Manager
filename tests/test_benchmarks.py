@@ -9,11 +9,11 @@ To compare: pytest tests/test_benchmarks.py --benchmark-only --benchmark-compare
 
 import pytest
 
-from rockbox_db_manager.database import Database
-from rockbox_db_manager.tagging.tag.tagfile import TagFile, TagEntry
-from rockbox_db_manager.tagging.titleformat import statement
-from rockbox_db_manager.utils import mtime_to_fat, fat_to_mtime
-from rockbox_db_manager.indexfile import IndexFile, IndexEntry
+from dap_db_manager.database import Database
+from dap_db_manager.tagging.tag.tagfile import TagFile, TagEntry
+from dap_db_manager.tagging.titleformat import statement
+from dap_db_manager.utils import mtime_to_fat, fat_to_mtime
+from dap_db_manager.indexfile import IndexFile, IndexEntry
 
 
 class TestUtilsBenchmarks:

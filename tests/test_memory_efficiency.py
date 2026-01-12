@@ -16,7 +16,7 @@ from pathlib import Path
 
 import pytest
 
-from rockbox_db_manager.database import Database, TagCache
+from dap_db_manager.database import Database, TagCache
 
 
 def format_size(bytes_size):

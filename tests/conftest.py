@@ -4,8 +4,8 @@ import sys
 from pathlib import Path
 import pytest
 
-from rockbox_db_manager.database import Database
-from rockbox_db_manager.tagging.tag.tagfile import TagFile, TagEntry
+from dap_db_manager.database import Database
+from dap_db_manager.tagging.tag.tagfile import TagFile, TagEntry
 
 # Add src directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
