@@ -16,7 +16,7 @@ from io import StringIO
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from rockbox_db_manager.tagging.tag.core import Tagger
+from dap_db_manager.tagging.tag.core import Tagger
 
 
 def profile_tag_parsing(audio_file: str):

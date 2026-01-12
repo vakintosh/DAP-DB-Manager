@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Memory profiling for rockbox-db-manager.
+"""Memory profiling for dap-db-manager.
 
 Usage:
     python profiling/memory_profile.py /path/to/music
@@ -22,7 +22,7 @@ except ImportError:
     print("Install with: pip install memory_profiler")
     sys.exit(1)
 
-from rockbox_db_manager.database import Database
+from dap_db_manager.database import Database
 
 
 @profile

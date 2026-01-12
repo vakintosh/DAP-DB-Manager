@@ -3,8 +3,8 @@
 import io
 import struct
 import pytest
-from rockbox_db_manager.tagging.tag.tagfile import TagFile, TagEntry
-from rockbox_db_manager.constants import MAGIC, SUPPORTED_VERSIONS
+from dap_db_manager.tagging.tag.tagfile import TagFile, TagEntry
+from dap_db_manager.constants import MAGIC, SUPPORTED_VERSIONS
 
 
 class TestTagEntry:

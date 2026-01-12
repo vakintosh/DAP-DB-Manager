@@ -1,6 +1,6 @@
 # Profiling and Performance Analysis
 
-This directory contains tools for profiling and analyzing the performance of rockbox-db-manager.
+This directory contains tools for profiling and analyzing the performance of dap-db-manager.
 
 ## Quick Start
 

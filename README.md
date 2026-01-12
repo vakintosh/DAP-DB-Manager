@@ -44,7 +44,7 @@ Based on the original 2009 Python 2.x GUI implementation by **Mike Richards** an
 ### Optional (GUI)
 - **wxPython**: 4.2.4 or higher (requires framework-enabled Python on macOS)
 
-> **Note**: wxPython is only needed for the GUI. The CLI tool (`rdbm`) works without it,
+> **Note**: wxPython is only needed for the GUI. The CLI tool (`ddm`) works without it,
 > making it ideal for headless servers or environments where GUI dependencies are problematic.
 
 ---
@@ -57,20 +57,20 @@ Clean, production-ready containerization with full Kubernetes support.
 
 ```bash
 # Build the image
-docker build -t rockbox-db-manager .
+docker build -t dap-db-manager .
 
 # Generate database
 docker run --rm \
   -v /path/to/music:/input:ro \
   -v /path/to/output:/output \
-  rockbox-db-manager \
+  dap-db-manager \
   generate --music-dir /input --output /output/database_v1
 
 # Generate with JSON output (for automation/CI)
 docker run --rm \
   -v /path/to/music:/input:ro \
   -v /path/to/output:/output \
-  rockbox-db-manager \
+  dap-db-manager \
   generate --music-dir /input --output /output/database_v1 --json
 ```
 
@@ -78,8 +78,8 @@ docker run --rm \
 
 ```bash
 # Clone the repository
-git clone https://github.com/vakintosh/rockbox-db-manager.git
-cd rockbox-db-manager
+git clone https://github.com/vakintosh/dap-db-manager.git
+cd dap-db-manager
 
 # Install CLI only (without GUI/wxPython)
 uv sync
@@ -88,18 +88,18 @@ uv sync
 uv sync --extra gui
 
 # Run the CLI (works without wxPython)
-uv run rdbm --help
+uv run ddm --help
 
 # Run the GUI (requires wxPython)
-uv run rockbox-db-manager
+uv run dap-db-manager
 ```
 
 ### Using pip
 
 ```bash
 # Clone the repository
-git clone https://github.com/vakintosh/rockbox-db-manager.git
-cd rockbox-db-manager
+git clone https://github.com/vakintosh/dap-db-manager.git
+cd dap-db-manager
 
 # Create virtual environment
 python3 -m venv venv
@@ -112,10 +112,10 @@ pip install -e .
 pip install -e ".[gui]"
 
 # Run the CLI (works without wxPython)
-rdbm --help
+ddm --help
 
 # Run the GUI (requires wxPython)
-rockbox-db-manager-gui
+dap-db-manager-gui
 ```
 
 ---
@@ -124,17 +124,17 @@ rockbox-db-manager-gui
 
 ```bash
 # Generate a database
-rdbm generate --music-dir /path/to/music --output /path/to/.rockbox
+ddm generate --music-dir /path/to/music --output /path/to/.rockbox
 
 # Validate database integrity
-rdbm validate --db-dir /path/to/.rockbox
+ddm validate --db-dir /path/to/.rockbox
 
 # Inspect database files
-rdbm inspect --db-dir /path/to/.rockbox
+ddm inspect --db-dir /path/to/.rockbox
 
 # Get detailed help for any command
-rdbm --help
-rdbm generate --help
+ddm --help
+ddm generate --help
 ```
 
 ---
@@ -143,7 +143,7 @@ rdbm generate --help
 
 ### Command-Line Interface
 
-The `rdbm` command provides several subcommands for database management:
+The `ddm` command provides several subcommands for database management:
 
 - **`generate`** - Create Rockbox database from music folder
 - **`update`** - Update database with new/deleted files (delta update)
@@ -154,9 +154,9 @@ The `rdbm` command provides several subcommands for database management:
 
 For detailed options and usage:
 ```bash
-rdbm --help              # List all commands
-rdbm generate --help     # Help for specific command
-rdbm update --help       # Help for update command
+ddm --help              # List all commands
+ddm generate --help     # Help for specific command
+ddm update --help       # Help for update command
 ```
 
 **Key Features:**
@@ -176,19 +176,19 @@ rdbm update --help       # Help for update command
 
 ```bash
 # macOS - iPod mounted at /Volumes/IPOD
-rdbm generate \
+ddm generate \
   --music-dir /Volumes/IPOD/Music \
   --output /Volumes/IPOD/.rockbox \
   --ipod-root /Volumes/IPOD
 
 # Windows - iPod as drive E:
-rdbm generate \
+ddm generate \
   --music-dir E:\Music \
   --output E:\.rockbox \
   --ipod-root E:
 
 # Update existing database (cross-compiled)
-rdbm update \
+ddm update \
   --db-dir /Volumes/IPOD/.rockbox \
   --music-dir /Volumes/IPOD/Music \
   --ipod-root /Volumes/IPOD
@@ -208,10 +208,10 @@ The `update` command performs incremental database updates similar to Rockbox's 
 
 ```bash
 # Update existing database with new/deleted/renamed files
-rdbm update --db-dir /path/to/database --music-dir /path/to/music
+ddm update --db-dir /path/to/database --music-dir /path/to/music
 
 # Update and write to different location
-rdbm update --db-dir /path/to/database --music-dir /path/to/music --output /path/to/output
+ddm update --db-dir /path/to/database --music-dir /path/to/music --output /path/to/output
 ```
 
 **Benefits of Delta Update:**
@@ -233,10 +233,10 @@ This prevents the loss of statistics that would occur if renamed files were trea
 
 ```bash
 # Launch GUI
-rockbox-db-manager
+dap-db-manager
 
 # Or with UV
-uv run rockbox-db-manager
+uv run dap-db-manager
 ```
 
 Features include visual folder selection, progress tracking, and database inspection.
@@ -248,8 +248,8 @@ Features include visual folder selection, progress tracking, and database inspec
 Configuration files use TOML format. See [.rdbm_config_example.toml](.rdbm_config_example.toml) for all available options.
 
 **Default locations:**
-- Linux/macOS: `~/.rdbm/.rdbm_config.toml`
-- Windows: `%USERPROFILE%\.rdbm\.rdbm_config.toml`
+- Linux/macOS: `~/.ddm/.rdbm_config.toml`
+- Windows: `%USERPROFILE%\.ddm\.rdbm_config.toml`
 
 Use custom config with `--config` flag. For titleformat syntax, see: [Foobar2000 Titleformat Reference](http://wiki.hydrogenaudio.org/index.php?title=Foobar2000:Titleformat_Reference)
 
@@ -262,7 +262,7 @@ Use custom config with `--config` flag. For titleformat syntax, see: [Foobar2000
 uv run pytest -v
 
 # With coverage
-uv run pytest --cov=src/rockbox_db_manager --cov-report=html -v
+uv run pytest --cov=src/dap_db_manager --cov-report=html -v
 
 # Linting and formatting
 uv run ruff check src/ tests/
@@ -284,7 +284,7 @@ configure: error: The development files for GTK+ were not found.
 
 **Solution 1: Use CLI Only (Recommended for Servers)**
 
-The CLI (`rdbm`) works without wxPython. Install without GUI support:
+The CLI (`ddm`) works without wxPython. Install without GUI support:
 ```bash
 # Using uv
 uv sync
@@ -329,7 +329,7 @@ brew install python-tk@3.11
 If the GUI entry point fails with "wxPython is not installed":
 ```bash
 # Install with GUI support
-pip install rockbox-db-manager[gui]
+pip install dap-db-manager[gui]
 
 # Or in development mode
 pip install -e ".[gui]"
@@ -339,8 +339,8 @@ pip install -e ".[gui]"
 
 Verify the CLI works independently:
 ```bash
-rdbm --version
-rdbm generate --help
+ddm --version
+ddm generate --help
 ```
 
 ---
@@ -385,7 +385,7 @@ See LICENSE for full license text.
 - Some titleformat functions not yet fully implemented
 - Watch command disabled pending further testing
 
-See [GitHub Issues](https://github.com/vakintosh/rockbox-db-manager/issues) for complete list and updates.
+See [GitHub Issues](https://github.com/vakintosh/dap-db-manager/issues) for complete list and updates.
 
 ---
 

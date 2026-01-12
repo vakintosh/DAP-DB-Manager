@@ -7,10 +7,10 @@ import json
 
 from unittest.mock import patch
 
-from rockbox_db_manager.constants import MAGIC, FILE_TAG_INDICES
-from rockbox_db_manager.cli import main, __version__
-from rockbox_db_manager.cli.utils import setup_logging
-from rockbox_db_manager.cli.schemas import (
+from dap_db_manager.constants import MAGIC, FILE_TAG_INDICES
+from dap_db_manager.cli import main, __version__
+from dap_db_manager.cli.utils import setup_logging
+from dap_db_manager.cli.schemas import (
     ErrorResponse,
     ValidationSuccessResponse,
     ValidationFailedResponse,
@@ -22,7 +22,7 @@ from rockbox_db_manager.cli.schemas import (
 def test_version_output(capsys):
     """Test that --version flag displays version correctly."""
     with pytest.raises(SystemExit) as exc_info:
-        with patch("sys.argv", ["rdbm", "--version"]):
+        with patch("sys.argv", ["ddm", "--version"]):
             main()
 
     # argparse exits with 0 for --version
@@ -34,12 +34,12 @@ def test_version_output(capsys):
 def test_help_output(capsys):
     """Test that --help flag displays help information."""
     with pytest.raises(SystemExit) as exc_info:
-        with patch("sys.argv", ["rdbm", "--help"]):
+        with patch("sys.argv", ["ddm", "--help"]):
             main()
 
     assert exc_info.value.code == 0
     captured = capsys.readouterr()
-    assert "Rockbox Database Manager" in captured.out
+    assert "DAP DB Manager" in captured.out
     assert "generate" in captured.out
     assert "load" in captured.out
     assert "write" in captured.out
@@ -48,18 +48,18 @@ def test_help_output(capsys):
 def test_no_command_shows_help(capsys):
     """Test that running without a command shows help."""
     with pytest.raises(SystemExit) as exc_info:
-        with patch("sys.argv", ["rdbm"]):
+        with patch("sys.argv", ["ddm"]):
             main()
 
     assert exc_info.value.code == 0
     captured = capsys.readouterr()
-    assert "Rockbox Database Manager" in captured.out
+    assert "DAP DB Manager" in captured.out
 
 
 def test_generate_help(capsys):
     """Test that generate command help works."""
     with pytest.raises(SystemExit) as exc_info:
-        with patch("sys.argv", ["rdbm", "generate", "--help"]):
+        with patch("sys.argv", ["ddm", "generate", "--help"]):
             main()
 
     assert exc_info.value.code == 0
@@ -74,7 +74,7 @@ def test_generate_help(capsys):
 def test_load_help(capsys):
     """Test that load command help works."""
     with pytest.raises(SystemExit) as exc_info:
-        with patch("sys.argv", ["rdbm", "load", "--help"]):
+        with patch("sys.argv", ["ddm", "load", "--help"]):
             main()
 
     assert exc_info.value.code == 0
@@ -85,7 +85,7 @@ def test_load_help(capsys):
 def test_write_help(capsys):
     """Test that write command help works."""
     with pytest.raises(SystemExit) as exc_info:
-        with patch("sys.argv", ["rdbm", "write", "--help"]):
+        with patch("sys.argv", ["ddm", "write", "--help"]):
             main()
 
     assert exc_info.value.code == 0
@@ -97,7 +97,7 @@ def test_write_help(capsys):
 def test_validate_help(capsys):
     """Test that validate command help works."""
     with pytest.raises(SystemExit) as exc_info:
-        with patch("sys.argv", ["rdbm", "validate", "--help"]):
+        with patch("sys.argv", ["ddm", "validate", "--help"]):
             main()
 
     assert exc_info.value.code == 0
@@ -109,7 +109,7 @@ def test_validate_help(capsys):
 def test_validate_missing_path(capsys):
     """Test validate command with non-existent path."""
     with pytest.raises(SystemExit) as exc_info:
-        with patch("sys.argv", ["rdbm", "validate", "--db-dir", "/nonexistent/path"]):
+        with patch("sys.argv", ["ddm", "validate", "--db-dir", "/nonexistent/path"]):
             main()
 
     assert exc_info.value.code == 10  # ExitCode.INVALID_INPUT
@@ -122,7 +122,7 @@ def test_validate_missing_files(capsys, tmp_path):
     db_dir.mkdir()
 
     with pytest.raises(SystemExit) as exc_info:
-        with patch("sys.argv", ["rdbm", "validate", "--db-dir", str(db_dir)]):
+        with patch("sys.argv", ["ddm", "validate", "--db-dir", str(db_dir)]):
             main()
 
     assert exc_info.value.code == 31  # ExitCode.VALIDATION_FAILED
@@ -162,7 +162,7 @@ def test_validate_valid_database(tmp_path):
         )
 
     with pytest.raises(SystemExit) as exc_info:
-        with patch("sys.argv", ["rdbm", "validate", "--db-dir", str(db_dir)]):
+        with patch("sys.argv", ["ddm", "validate", "--db-dir", str(db_dir)]):
             main()
 
     assert exc_info.value.code == 0  # ExitCode.SUCCESS
@@ -216,7 +216,7 @@ def test_generate_missing_path(capsys):
         with patch(
             "sys.argv",
             [
-                "rdbm",
+                "ddm",
                 "generate",
                 "--music-dir",
                 "/nonexistent/path",
@@ -232,7 +232,7 @@ def test_generate_missing_path(capsys):
 def test_load_missing_path(capsys):
     """Test load command with non-existent path."""
     with pytest.raises(SystemExit) as exc_info:
-        with patch("sys.argv", ["rdbm", "load", "--db-dir", "/nonexistent/path"]):
+        with patch("sys.argv", ["ddm", "load", "--db-dir", "/nonexistent/path"]):
             main()
 
     assert exc_info.value.code == 10  # ExitCode.INVALID_INPUT
@@ -241,7 +241,7 @@ def test_load_missing_path(capsys):
 def test_inspect_help(capsys):
     """Test that inspect command help works."""
     with pytest.raises(SystemExit) as exc_info:
-        with patch("sys.argv", ["rdbm", "inspect", "--help"]):
+        with patch("sys.argv", ["ddm", "inspect", "--help"]):
             main()
 
     assert exc_info.value.code == 0
@@ -257,7 +257,7 @@ def test_inspect_help(capsys):
 def test_inspect_missing_path(capsys):
     """Test inspect command with non-existent path."""
     with pytest.raises(SystemExit) as exc_info:
-        with patch("sys.argv", ["rdbm", "inspect", "--db-dir", "/nonexistent/path"]):
+        with patch("sys.argv", ["ddm", "inspect", "--db-dir", "/nonexistent/path"]):
             main()
 
     assert exc_info.value.code == 10  # ExitCode.INVALID_INPUT
@@ -273,7 +273,7 @@ def test_inspect_invalid_file_number(capsys, tmp_path):
     with pytest.raises(SystemExit) as exc_info:
         with patch(
             "sys.argv",
-            ["rdbm", "inspect", "--db-dir", str(db_dir), "--file-number", "10"],
+            ["ddm", "inspect", "--db-dir", str(db_dir), "--file-number", "10"],
         ):
             main()
 
@@ -292,7 +292,7 @@ def test_inspect_missing_database_file(capsys, tmp_path):
     db_dir.mkdir()
 
     with pytest.raises(SystemExit) as exc_info:
-        with patch("sys.argv", ["rdbm", "inspect", "--db-dir", str(db_dir)]):
+        with patch("sys.argv", ["ddm", "inspect", "--db-dir", str(db_dir)]):
             main()
 
     assert exc_info.value.code == 10  # ExitCode.INVALID_INPUT
@@ -323,7 +323,7 @@ def test_inspect_with_mock_database(tmp_path):
         )
 
     # Test inspect without error
-    with patch("sys.argv", ["rdbm", "inspect", "--db-dir", str(db_dir)]):
+    with patch("sys.argv", ["ddm", "inspect", "--db-dir", str(db_dir)]):
         # Should not raise SystemExit for valid file
         try:
             main()
@@ -350,7 +350,7 @@ def test_inspect_quiet_mode(tmp_path):
     # Test with quiet mode
     with patch(
         "sys.argv",
-        ["rdbm", "inspect", "--db-dir", str(db_dir), "--file-number", "0", "--quiet"],
+        ["ddm", "inspect", "--db-dir", str(db_dir), "--file-number", "0", "--quiet"],
     ):
         try:
             main()
@@ -376,7 +376,7 @@ def test_inspect_quiet_mode(tmp_path):
 #         f.write(struct.pack('III', magic, datasize, entry_count))
 
 # Test with verbose mode
-# with patch('sys.argv', ['rdbm', 'inspect', str(db_dir), '0', '--verbose']):
+# with patch('sys.argv', ['ddm', 'inspect', str(db_dir), '0', '--verbose']):
 #     try:
 #         main()
 #     except SystemExit as e:
@@ -404,7 +404,7 @@ def test_inspect_all_file_numbers(tmp_path):
         with patch(
             "sys.argv",
             [
-                "rdbm",
+                "ddm",
                 "inspect",
                 "--db-dir",
                 str(db_dir),
@@ -457,7 +457,7 @@ def test_validate_json_valid_database(tmp_path, capsys):
         )
 
     with pytest.raises(SystemExit) as exc_info:
-        with patch("sys.argv", ["rdbm", "validate", "--db-dir", str(db_dir), "--json"]):
+        with patch("sys.argv", ["ddm", "validate", "--db-dir", str(db_dir), "--json"]):
             main()
 
     assert exc_info.value.code == 0
@@ -480,7 +480,7 @@ def test_validate_json_missing_files(tmp_path, capsys):
     db_dir.mkdir()
 
     with pytest.raises(SystemExit) as exc_info:
-        with patch("sys.argv", ["rdbm", "validate", "--db-dir", str(db_dir), "--json"]):
+        with patch("sys.argv", ["ddm", "validate", "--db-dir", str(db_dir), "--json"]):
             main()
 
     assert exc_info.value.code == 31  # VALIDATION_FAILED
@@ -500,7 +500,7 @@ def test_validate_json_nonexistent_path(capsys):
     """Test validate command with --json flag on non-existent path."""
     with pytest.raises(SystemExit) as exc_info:
         with patch(
-            "sys.argv", ["rdbm", "validate", "--db-dir", "/nonexistent/path", "--json"]
+            "sys.argv", ["ddm", "validate", "--db-dir", "/nonexistent/path", "--json"]
         ):
             main()
 
@@ -519,7 +519,7 @@ def test_validate_json_nonexistent_path(capsys):
 
 def test_load_json_valid_database(tmp_path, capsys):
     """Test load command with --json flag on valid database."""
-    from rockbox_db_manager.database import Database
+    from dap_db_manager.database import Database
 
     # Reset logging to avoid interference from previous tests
     for handler in logging.root.handlers[:]:
@@ -535,7 +535,7 @@ def test_load_json_valid_database(tmp_path, capsys):
     with pytest.raises(SystemExit) as exc_info:
         with patch(
             "sys.argv",
-            ["rdbm", "load", "--db-dir", str(db_dir), "--json", "--log-level", "debug"],
+            ["ddm", "load", "--db-dir", str(db_dir), "--json", "--log-level", "debug"],
         ):
             main()
 
@@ -558,7 +558,7 @@ def test_load_json_nonexistent_path(capsys):
     """Test load command with --json flag on non-existent path."""
     with pytest.raises(SystemExit) as exc_info:
         with patch(
-            "sys.argv", ["rdbm", "load", "--db-dir", "/nonexistent/path", "--json"]
+            "sys.argv", ["ddm", "load", "--db-dir", "/nonexistent/path", "--json"]
         ):
             main()
 
@@ -586,7 +586,7 @@ def test_load_json_corrupted_database(tmp_path, capsys):
         f.write(b"CORRUPTED_DATA")
 
     with pytest.raises(SystemExit) as exc_info:
-        with patch("sys.argv", ["rdbm", "load", "--db-dir", str(db_dir), "--json"]):
+        with patch("sys.argv", ["ddm", "load", "--db-dir", str(db_dir), "--json"]):
             main()
 
     assert exc_info.value.code == 20  # DATA_ERROR
@@ -608,7 +608,7 @@ def test_generate_json_nonexistent_path(capsys):
         with patch(
             "sys.argv",
             [
-                "rdbm",
+                "ddm",
                 "generate",
                 "--music-dir",
                 "/nonexistent/path",
@@ -634,7 +634,7 @@ def test_generate_json_nonexistent_path(capsys):
 
 def test_write_json_valid_database(tmp_path, capsys):
     """Test write command with --json flag on valid database."""
-    from rockbox_db_manager.database import Database
+    from dap_db_manager.database import Database
 
     # Reset logging to avoid interference from previous tests
     for handler in logging.root.handlers[:]:
@@ -652,7 +652,7 @@ def test_write_json_valid_database(tmp_path, capsys):
         with patch(
             "sys.argv",
             [
-                "rdbm",
+                "ddm",
                 "write",
                 "--db-dir",
                 str(db_dir),
@@ -685,7 +685,7 @@ def test_write_json_nonexistent_source(capsys):
         with patch(
             "sys.argv",
             [
-                "rdbm",
+                "ddm",
                 "write",
                 "--db-dir",
                 "/nonexistent/path",
@@ -724,7 +724,7 @@ def test_write_json_corrupted_database(tmp_path, capsys):
         with patch(
             "sys.argv",
             [
-                "rdbm",
+                "ddm",
                 "write",
                 "--db-dir",
                 str(db_dir),
@@ -779,7 +779,7 @@ def test_validate_json_quiet_mode_suppresses_output(tmp_path, capsys):
     with pytest.raises(SystemExit) as exc_info:
         with patch(
             "sys.argv",
-            ["rdbm", "validate", "--db-dir", str(db_dir), "--json", "--quiet"],
+            ["ddm", "validate", "--db-dir", str(db_dir), "--json", "--quiet"],
         ):
             main()
 
@@ -824,7 +824,7 @@ def test_json_output_structure_validate_success(tmp_path, capsys):
         )
 
     with pytest.raises(SystemExit):
-        with patch("sys.argv", ["rdbm", "validate", "--db-dir", str(db_dir), "--json"]):
+        with patch("sys.argv", ["ddm", "validate", "--db-dir", str(db_dir), "--json"]):
             main()
 
     captured = capsys.readouterr()
@@ -845,7 +845,7 @@ def test_json_output_structure_validate_success(tmp_path, capsys):
 
 def test_json_output_structure_load_success(tmp_path, capsys):
     """Test that load --json output has all expected fields."""
-    from rockbox_db_manager.database import Database
+    from dap_db_manager.database import Database
 
     # Reset logging to avoid interference from previous tests
     for handler in logging.root.handlers[:]:
@@ -861,7 +861,7 @@ def test_json_output_structure_load_success(tmp_path, capsys):
     with pytest.raises(SystemExit):
         with patch(
             "sys.argv",
-            ["rdbm", "load", "--db-dir", str(db_dir), "--json", "--log-level", "debug"],
+            ["ddm", "load", "--db-dir", str(db_dir), "--json", "--log-level", "debug"],
         ):
             main()
 
@@ -899,11 +899,11 @@ def test_json_output_structure_load_success(tmp_path, capsys):
 def test_json_output_parseable_all_error_cases(capsys):
     """Test that all error responses produce parseable JSON."""
     error_cases = [
-        (["rdbm", "validate", "--db-dir", "/nonexistent", "--json"], 10),
-        (["rdbm", "load", "--db-dir", "/nonexistent", "--json"], 10),
+        (["ddm", "validate", "--db-dir", "/nonexistent", "--json"], 10),
+        (["ddm", "load", "--db-dir", "/nonexistent", "--json"], 10),
         (
             [
-                "rdbm",
+                "ddm",
                 "write",
                 "--db-dir",
                 "/nonexistent",
@@ -915,7 +915,7 @@ def test_json_output_parseable_all_error_cases(capsys):
         ),
         (
             [
-                "rdbm",
+                "ddm",
                 "generate",
                 "--music-dir",
                 "/nonexistent",

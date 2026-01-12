@@ -1,1 +1,1 @@
-"""Unit tests for Rockbox Database Manager."""
+"""Unit tests for DAP DB Manager."""

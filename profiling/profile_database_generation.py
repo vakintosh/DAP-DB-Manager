@@ -17,7 +17,7 @@ from io import StringIO
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
-from rockbox_db_manager.database import Database
+from dap_db_manager.database import Database
 
 
 def profile_database_generation(music_dir: str):

@@ -9,44 +9,44 @@ to iPod-relative paths for database cross-compilation.
 import pytest
 from pathlib import PureWindowsPath, PurePosixPath
 
-from rockbox_db_manager.database.generator import DatabaseGenerator
+from dap_db_manager.database.generator import DatabaseGenerator
 
 
-class TestNormalizeIpodRoot:
-    """Test iPod root path normalization."""
+class TestNormalizeDapRoot:
+    """Test DAP root path normalization."""
 
     @pytest.mark.parametrize(
         "input_path,expected",
         [
-            ("/Volumes/IPOD", "/Volumes/IPOD"),
-            ("/Volumes/IPOD/", "/Volumes/IPOD"),
+            ("/Volumes/DAP", "/Volumes/DAP"),
+            ("/Volumes/DAP/", "/Volumes/DAP"),
             ("E:", "E:"),
             ("E:\\", "E:"),
-            ("/mnt/ipod", "/mnt/ipod"),
-            ("/mnt/ipod/", "/mnt/ipod"),
+            ("/mnt/dap", "/mnt/dap"),
+            ("/mnt/dap/", "/mnt/dap"),
             ("", None),
             (None, None),
         ],
     )
-    def test_normalize_ipod_root(self, input_path, expected):
-        """Test that iPod root paths are normalized correctly."""
-        result = DatabaseGenerator._normalize_ipod_root(input_path)
+    def test_normalize_dap_root(self, input_path, expected):
+        """Test that DAP root paths are normalized correctly."""
+        result = DatabaseGenerator._normalize_dap_root(input_path)
         assert result == expected, (
-            f"normalize_ipod_root({input_path!r}) = {result!r}, expected {expected!r}"
+            f"normalize_dap_root({input_path!r}) = {result!r}, expected {expected!r}"
         )
 
 
 class TestPathTranslation:
-    """Test path translation from laptop paths to iPod-relative paths."""
+    """Test path translation from laptop paths to DAP-relative paths."""
 
     @pytest.mark.parametrize(
-        "ipod_root,laptop_path,expected_db_path",
+        "dap_root,laptop_path,expected_db_path",
         [
             # macOS scenarios
-            ("/Volumes/IPOD", "/Volumes/IPOD/Music/Song.mp3", "/Music/Song.mp3"),
+            ("/Volumes/DAP", "/Volumes/DAP/Music/Song.mp3", "/Music/Song.mp3"),
             (
-                "/Volumes/IPOD",
-                "/Volumes/IPOD/FLAC/Rock/Album/Track.flac",
+                "/Volumes/DAP",
+                "/Volumes/DAP/FLAC/Rock/Album/Track.flac",
                 "/FLAC/Rock/Album/Track.flac",
             ),
             # Windows scenarios
@@ -54,18 +54,18 @@ class TestPathTranslation:
             ("E:", "E:\\Music\\Song.mp3", "/Music/Song.mp3"),  # Backslashes converted
             # Linux scenarios
             (
-                "/mnt/ipod",
-                "/mnt/ipod/Music/Artist/Album/Song.mp3",
+                "/mnt/dap",
+                "/mnt/dap/Music/Artist/Album/Song.mp3",
                 "/Music/Artist/Album/Song.mp3",
             ),
             # Edge cases
-            ("/Volumes/IPOD", "/Volumes/IPOD/Song.mp3", "/Song.mp3"),  # File at root
+            ("/Volumes/DAP", "/Volumes/DAP/Song.mp3", "/Song.mp3"),  # File at root
         ],
     )
-    def test_path_translation(self, ipod_root, laptop_path, expected_db_path):
-        """Test that laptop paths are correctly translated to iPod-relative paths."""
+    def test_path_translation(self, dap_root, laptop_path, expected_db_path):
+        """Test that laptop paths are correctly translated to DAP-relative paths."""
         # Simulate the path translation logic from generator.py
-        normalized_root = DatabaseGenerator._normalize_ipod_root(ipod_root)
+        normalized_root = DatabaseGenerator._normalize_dap_root(dap_root)
 
         # Normalize paths for comparison (handle backslashes)
         normalized_path = laptop_path.replace("\\", "/")
@@ -74,10 +74,10 @@ class TestPathTranslation:
         )
 
         assert normalized_root_for_compare is not None, (
-            f"iPod root {ipod_root!r} normalized to None"
+            f"DAP root {dap_root!r} normalized to None"
         )
         assert normalized_path.startswith(normalized_root_for_compare), (
-            f"Path {laptop_path!r} does not start with iPod root {normalized_root!r}"
+            f"Path {laptop_path!r} does not start with DAP root {normalized_root!r}"
         )
 
         clean_path = normalized_path[len(normalized_root_for_compare) :]
@@ -85,7 +85,7 @@ class TestPathTranslation:
             clean_path = "/" + clean_path
 
         assert clean_path == expected_db_path, (
-            f"iPod root: {ipod_root!r}, Laptop path: {laptop_path!r} → {clean_path!r}, expected {expected_db_path!r}"
+            f"DAP root: {dap_root!r}, Laptop path: {laptop_path!r} → {clean_path!r}, expected {expected_db_path!r}"
         )
 
 
@@ -100,7 +100,7 @@ class TestLegacyBehavior:
         ],
     )
     def test_legacy_path_stripping(self, input_path, expected_output):
-        """Test legacy path processing when ipod_root is not specified."""
+        """Test legacy path processing when dap_root is not specified."""
         # Simulate legacy logic
         path_obj = (
             PureWindowsPath(input_path)

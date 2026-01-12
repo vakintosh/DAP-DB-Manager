@@ -1,5 +1,5 @@
 [project]
-name = "rockbox-db-manager"
+name = "dap-db-manager"
 version = "0.5.0"
 description = "A Python application for managing Rockbox database files with a wxPython GUI and CLI."
 readme = "README.md"
@@ -31,11 +31,11 @@ gui = [
 ]
 
 [project.scripts]
-rdbm = "rockbox_db_manager.cli:main"
-rockbox-db-manager = "rockbox_db_manager.gui:main"
+ddm = "dap_db_manager.cli:main"
+dap-db-manager = "dap_db_manager.gui:main"
 
 [project.gui-scripts]
-rockbox-db-manager-gui = "rockbox_db_manager.gui:main"
+dap-db-manager-gui = "dap_db_manager.gui:main"
 
 [build-system]
 requires = ["uv_build>=0.9.18,<0.10.0"]
