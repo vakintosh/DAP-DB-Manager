@@ -27,6 +27,7 @@ from .commands import (
     cmd_write,
     cmd_inspect,
     cmd_update,
+    cmd_detect_mounts,
 )
 from ..config import Config
 from ..database.cache import TagCache
@@ -42,6 +43,7 @@ __all__ = [
     "cmd_write",
     "cmd_inspect",
     "cmd_update",
+    "cmd_detect_mounts",
     "setup_logging",
 ]
 
@@ -344,6 +346,40 @@ def parse_args() -> tuple[argparse.ArgumentParser, argparse.Namespace]:
     update_global = update_parser.add_argument_group("Global Options")
     add_global_options(update_global)
     update_parser.set_defaults(func=cmd_update)
+
+    # ──────────────────────────────
+    # detect-mounts
+    # ──────────────────────────────
+    detect_mounts_parser = subparsers.add_parser(
+        "detect-mounts",
+        help="Detect Rockbox mount notation from existing database or set manually",
+        usage="rdbm detect-mounts --db-dir <path/to/database> [--set-mount <notation>] [options]",
+        description=(
+            "Analyze an existing Rockbox database to detect internal mount notation "
+            "(e.g., /<HDD0>, /<HDD1>, /<MMC0>), or manually set mount notation if no database exists yet. "
+            "Mount notation is saved to config and automatically used by generate/update commands. "
+            "Run this BEFORE generating your first database to ensure correct path formatting."
+        ),
+        formatter_class=RichHelpFormatter,
+        add_help=False,
+    )
+    detect_mounts_required = detect_mounts_parser.add_argument_group("Required")
+    detect_mounts_required.add_argument(
+        "--db-dir",
+        type=Path,
+        required=True,
+        help="Path to existing Rockbox database directory (or .rockbox folder)",
+    )
+    detect_mounts_options = detect_mounts_parser.add_argument_group("Options")
+    detect_mounts_options.add_argument(
+        "--set-mount",
+        type=str,
+        metavar="NOTATION",
+        help="Manually set mount notation (e.g., /<HDD0>, /<MMC0>) and save to config",
+    )
+    detect_mounts_global = detect_mounts_parser.add_argument_group("Global Options")
+    add_global_options(detect_mounts_global)
+    detect_mounts_parser.set_defaults(func=cmd_detect_mounts)
 
     # Parse args
     return parser, parser.parse_args()

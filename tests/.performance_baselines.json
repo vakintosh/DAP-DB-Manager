@@ -1,9 +1,9 @@
 {
-  "tagfile_creation_100": 0.0002970240020658821,
-  "tagfile_write_1000": 0.011629483997239731,
-  "tagfile_read_1000": 0.012214571004733443,
-  "utils_conversion_10000": 0.08711451099952683,
-  "database_init_100": 0.14890001001185738,
-  "titleformat_eval_simple_1000": 0.21990788499533664,
-  "titleformat_parse_complex_100": 0.004286488008801825
+  "tagfile_creation_100": 0.000952745001995936,
+  "tagfile_write_1000": 0.01209679500607308,
+  "tagfile_read_1000": 0.014511054003378376,
+  "utils_conversion_10000": 0.08288613399781752,
+  "database_init_100": 0.13356684600876179,
+  "titleformat_eval_simple_1000": 0.21381551498780027,
+  "titleformat_parse_complex_100": 0.005319360003340989
 }
