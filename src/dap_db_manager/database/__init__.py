@@ -69,7 +69,7 @@ class Database:
         self.dap_root = dap_root
 
         # Get mount notation from config (auto-detected via detect-mounts command)
-        mount_notation = self.config.get_mount_notation()
+        # Mount notation is stored in config and used during database write operations
 
         # Set database version from config BEFORE calling clear()
         db_version = self.config.get_database_version()
@@ -100,7 +100,6 @@ class Database:
         self._generator = DatabaseGenerator(
             max_workers=self.max_workers,
             dap_root=dap_root,
-            mount_notation=mount_notation,
         )
 
         # Set default formats
