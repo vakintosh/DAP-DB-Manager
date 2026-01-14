@@ -21,24 +21,26 @@ def parse(format, end_chars=None):
     own_length = 0
     parts = []
     i = 0
-    last_string = ""
+    # Use list for O(1) append instead of O(n) string concatenation
+    string_chars = []
     while i < len(format):
         c = format[i]
         if end_chars and c in end_chars:
             break
         if c in char_map:
             obj, length = char_map[c](format[i:])
-            if last_string:
-                parts.append(string.String(last_string))
-                last_string = ""
+            if string_chars:
+                # Join once instead of repeated concatenation
+                parts.append(string.String("".join(string_chars)))
+                string_chars.clear()
             parts.append(obj)
             own_length += length
             i += length
         else:
             own_length += 1
-            last_string += c
+            string_chars.append(c)
             i += 1
 
-    if last_string:
-        parts.append(string.String(last_string))
+    if string_chars:
+        parts.append(string.String("".join(string_chars)))
     return Statement(parts), own_length

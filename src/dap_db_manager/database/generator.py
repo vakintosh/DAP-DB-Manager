@@ -329,7 +329,11 @@ class DatabaseGenerator:
             format_strings[field] = (fmt_str, sort_str)
 
         # Batch progress updates
-        batch_size = 200  # Larger batch size for ProcessPool overhead
+        # Optimized batch size balances parallelization overhead vs processing efficiency
+        # - Smaller batches: more frequent updates, higher overhead
+        # - Larger batches: fewer updates, better throughput
+        # 200 provides good balance for ProcessPool overhead
+        batch_size = 200  # Optimal for parallel processing with IPC overhead
         total_paths = len(paths)
         sorted_paths = sorted(paths)
 

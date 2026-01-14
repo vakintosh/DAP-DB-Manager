@@ -6,11 +6,20 @@ from ...constants import MAGIC, ENCODING, SUPPORTED_VERSIONS
 
 
 class TagFile:
+    """Memory-optimized TagFile with fast lookups.
+
+    Uses __slots__ to reduce memory footprint and maintains multiple
+    indices for O(1) lookups by different keys.
+    """
+
+    __slots__ = ("magic", "entrydict", "entries", "offsets", "_index_by_sort")
+
     def __init__(self, entries=None):
         self.magic = MAGIC
         self.entrydict = {}
         self.entries = []
         self.offsets = {}
+        self._index_by_sort = {}  # Fast lookup by sort key
         if entries is not None:
             for entry in entries:
                 self.append(entry)
@@ -33,11 +42,34 @@ class TagFile:
         return sum(entry.size for entry in self.entries)
 
     def append(self, entry):
+        """Add entry with indexing for fast lookups."""
         self.entrydict[entry.key] = entry
         self.entries.append(entry)
+        # Build sort index for O(1) lookups
+        if hasattr(entry, "sort"):
+            sort_key = entry.sort.lower() if entry.sort else entry.key.lower()
+            self._index_by_sort[sort_key] = entry
+
+    def find_by_sort(self, sort_key: str):
+        """Fast O(1) lookup by sort key.
+
+        Args:
+            sort_key: Sort key to search for
+
+        Returns:
+            TagEntry if found, None otherwise
+        """
+        return self._index_by_sort.get(sort_key.lower())
 
     def sort(self):
+        """Sort entries and rebuild sort index."""
         self.entries.sort(key=attrgetter("sort"))
+        # Rebuild sort index after sorting
+        self._index_by_sort.clear()
+        for entry in self.entries:
+            if hasattr(entry, "sort"):
+                sort_key = entry.sort.lower() if entry.sort else entry.key.lower()
+                self._index_by_sort[sort_key] = entry
 
     def to_file(self, f):
         self.offsets.clear()
@@ -71,6 +103,7 @@ class TagFile:
             EOFError: If file ends unexpectedly
         """
         tf = TagFile()
+        # Note: _index_by_sort will be populated as entries are appended
         try:
             header = f.read(4 * 3)
             if len(header) < 12:
