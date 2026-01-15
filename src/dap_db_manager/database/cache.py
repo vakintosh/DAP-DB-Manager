@@ -11,6 +11,15 @@ import logging
 from collections import OrderedDict
 from typing import Optional, Callable, Any
 
+try:
+    import msgpack
+
+    USE_MSGPACK = True
+except ImportError:
+    msgpack = None  # type: ignore[assignment]
+    USE_MSGPACK = False
+    logging.debug("msgpack not available, falling back to pickle")
+
 
 class SimpleTag(dict):
     """Lightweight dict-like wrapper for tag data that supports item access and get_string method.
@@ -175,11 +184,15 @@ class TagCache:
             Estimated size in bytes
         """
         try:
-            # Rough estimation: size of pickled data is good approximation
-            # Add overhead for dict/tuple structures (~200 bytes per entry)
-            return len(pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)) + 200
+            if USE_MSGPACK:
+                # msgpack is faster and more compact than pickle
+                # Add overhead for dict/tuple structures (~200 bytes per entry)
+                return len(msgpack.packb(value, use_bin_type=True)) + 200
+            else:
+                # Fallback to pickle
+                return len(pickle.dumps(value, protocol=pickle.HIGHEST_PROTOCOL)) + 200
         except Exception:
-            # Fallback: assume ~1KB per entry if pickle fails
+            # Fallback: assume ~1KB per entry if serialization fails
             return 1024
 
     @staticmethod
@@ -266,7 +279,57 @@ class TagCache:
             open_mode = "rb"
 
             with opener(path, open_mode) as f:
-                nItems = pickle.load(f)  # type: ignore[arg-type]
+                raw_data = f.read()
+
+            # Try msgpack first, fall back to pickle for backward compatibility
+            try:
+                if USE_MSGPACK:
+                    unpacker = msgpack.Unpacker(raw=False, use_list=True)
+                    unpacker.feed(raw_data)
+                    nItems = next(unpacker)
+                    assert isinstance(nItems, int)
+                    if callback:
+                        callback(nItems)
+
+                    # Bulk load optimization: bypass individual checks and load directly
+                    for i in range(nItems):
+                        try:
+                            data = next(unpacker)
+                            file_path, ((size, mtime), tags) = data
+                        except StopIteration:
+                            break
+                        except (ValueError, TypeError) as e:
+                            # Skip corrupted entries
+                            if callback:
+                                callback(
+                                    f"Warning: Skipped corrupted entry {i + 1}/{nItems}: {e}"
+                                )
+                            continue
+                        else:
+                            if callback:
+                                callback(file_path)
+
+                            # Restore tags to usable format and cache
+                            lowerpath = file_path.lower()
+                            restored_tags = (
+                                cls.restore_tag_dict(tags)
+                                if isinstance(tags, dict)
+                                else tags
+                            )
+                            cls._cache[lowerpath] = ((size, mtime), restored_tags)  # type: ignore[assignment]
+                            paths_set.add(lowerpath)
+                else:
+                    raise ImportError("msgpack not available")
+            except (
+                (ImportError, msgpack.exceptions.ExtraData, StopIteration)
+                if USE_MSGPACK
+                else (ImportError,)
+            ):
+                # Fall back to pickle for backward compatibility
+                import io
+
+                f = io.BytesIO(raw_data)
+                nItems = pickle.load(f)
                 assert isinstance(nItems, int)
                 if callback:
                     callback(nItems)
@@ -274,7 +337,7 @@ class TagCache:
                 # Bulk load optimization: bypass individual checks and load directly
                 for i in range(nItems):
                     try:
-                        data = pickle.load(f)  # type: ignore[arg-type]
+                        data = pickle.load(f)
                         file_path, ((size, mtime), tags) = data
                     except EOFError:
                         break
@@ -327,34 +390,51 @@ class TagCache:
         if not path.endswith(".gz"):
             path = path + ".gz"
 
-        with gzip.open(path, "wb", compresslevel=6) as f:
-            # Only save paths that exist in tag_cache (some may have been trimmed)
-            valid_paths = [p for p in paths_set if p in cls._cache]
-            missing_count = len(paths_set) - len(valid_paths)
-            if missing_count > 0:
-                logging.warning(
-                    f"Cache trimmed during scan: {missing_count} files not in cache. "
-                    f"Consider increasing MAX_CACHE_MEMORY_MB (current: {cls.MAX_CACHE_MEMORY_MB} MB) "
-                    f"or disabling auto-trim during scan."
-                )
-            if callback:
-                callback(len(valid_paths))
-            # Use pickle protocol 5 (Python 3.8+) for better efficiency
-            pickle.dump(len(valid_paths), f, pickle.HIGHEST_PROTOCOL)
-            for path_entry in sorted(valid_paths):
-                if callback:
-                    callback(path_entry)
-                # Extract essential tags only before pickling
-                size_mtime, tags = cls._cache[path_entry]
-                if not isinstance(tags, dict):  # type: ignore[unreachable]
-                    essential_tags = cls.extract_essential_tags(tags)
-                else:
-                    essential_tags = tags  # type: ignore[unreachable]
-                pickle.dump(
-                    (path_entry, (size_mtime, essential_tags)),
-                    f,
-                    pickle.HIGHEST_PROTOCOL,
-                )
+        # Only save paths that exist in tag_cache (some may have been trimmed)
+        valid_paths = [p for p in paths_set if p in cls._cache]
+        missing_count = len(paths_set) - len(valid_paths)
+        if missing_count > 0:
+            logging.warning(
+                f"Cache trimmed during scan: {missing_count} files not in cache. "
+                f"Consider increasing MAX_CACHE_MEMORY_MB (current: {cls.MAX_CACHE_MEMORY_MB} MB) "
+                f"or disabling auto-trim during scan."
+            )
+        if callback:
+            callback(len(valid_paths))
+
+        # Use msgpack for faster serialization (2-3x faster than pickle)
+        if USE_MSGPACK:
+            packer = msgpack.Packer(use_bin_type=True)
+            with gzip.open(path, "wb", compresslevel=6) as f:
+                f.write(packer.pack(len(valid_paths)))
+                for path_entry in sorted(valid_paths):
+                    if callback:
+                        callback(path_entry)
+                    # Extract essential tags only before packing
+                    size_mtime, tags = cls._cache[path_entry]
+                    if not isinstance(tags, dict):  # type: ignore[unreachable]
+                        essential_tags = cls.extract_essential_tags(tags)
+                    else:
+                        essential_tags = tags  # type: ignore[unreachable]
+                    f.write(packer.pack((path_entry, (size_mtime, essential_tags))))
+        else:
+            # Fallback to pickle if msgpack not available
+            with gzip.open(path, "wb", compresslevel=6) as f:
+                pickle.dump(len(valid_paths), f, pickle.HIGHEST_PROTOCOL)
+                for path_entry in sorted(valid_paths):
+                    if callback:
+                        callback(path_entry)
+                    # Extract essential tags only before pickling
+                    size_mtime, tags = cls._cache[path_entry]
+                    if not isinstance(tags, dict):  # type: ignore[unreachable]
+                        essential_tags = cls.extract_essential_tags(tags)
+                    else:
+                        essential_tags = tags  # type: ignore[unreachable]
+                    pickle.dump(
+                        (path_entry, (size_mtime, essential_tags)),
+                        f,
+                        pickle.HIGHEST_PROTOCOL,
+                    )
 
         return (path, len(valid_paths))
 
