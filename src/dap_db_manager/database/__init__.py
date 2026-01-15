@@ -453,8 +453,9 @@ class Database:
 
                 # Update paths_to_delete and paths_to_add to exclude renamed files
                 renamed_old_paths = set(renames.keys())
+                # Must normalize new paths for comparison (same as paths_to_add format)
                 renamed_new_paths = {
-                    new_path.lower() for new_path, _ in renames.values()
+                    normalize_scanned_path(new_path) for new_path, _ in renames.values()
                 }
 
                 paths_to_delete = paths_to_delete - renamed_old_paths
