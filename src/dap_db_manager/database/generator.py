@@ -280,7 +280,10 @@ class DatabaseGenerator:
     """Handles database generation from cached tags with parallel processing."""
 
     def __init__(
-        self, max_workers: Optional[int] = None, dap_root: Optional[str] = None
+        self,
+        max_workers: Optional[int] = None,
+        dap_root: Optional[str] = None,
+        mount_notation: Optional[str] = None,
     ):
         """Initialize the database generator.
 
@@ -290,7 +293,9 @@ class DatabaseGenerator:
             dap_root: Optional DAP mount point for path translation.
                       When set, strips this prefix from file paths to create DAP-relative paths.
                       Example: dap_root="/Volumes/DAP" converts "/Volumes/DAP/Music/Song.mp3"
-                      to "/Music/Song.mp3" in the database.
+                      to "/Music/Song.mp3" (before mount_notation is added).
+            mount_notation: Optional mount notation to prepend to paths.
+                           Example: mount_notation="/<HDD0>" results in "/<HDD0>/Music/Song.mp3"
         """
         if max_workers is None:
             # For CPU-bound operations (formatting), use CPU count
@@ -302,6 +307,7 @@ class DatabaseGenerator:
         self.dap_root_normalized = (
             self.dap_root.replace("\\", "/").lower() if self.dap_root else None
         )
+        self.mount_notation = mount_notation.rstrip("/") if mount_notation else None
         self._lock = Lock()
 
         # Persistent pool - reused across operations for better performance
@@ -427,6 +433,10 @@ class DatabaseGenerator:
             )
             if not clean_path.startswith("/"):
                 clean_path = "/" + clean_path
+
+        # Prepend mount notation if configured
+        if self.mount_notation:
+            clean_path = self.mount_notation + clean_path
 
         return {"path": clean_path, "mtime": mtime, "tags": tags}
 
@@ -573,7 +583,7 @@ class DatabaseGenerator:
         # Path
         entry.path = TagEntry(result["path"], is_path=True)
         entry.path.index = index.count
-        tagfiles["path"].append(entry.path)
+        tagfiles["path"].append_sorted(entry.path)
 
         # Title
         try:
@@ -581,7 +591,7 @@ class DatabaseGenerator:
         except KeyError:
             entry.title = TagEntry("<Untagged>")
         entry.title.index = index.count
-        tagfiles["title"].append(entry.title)
+        tagfiles["title"].append_sorted(entry.title)
 
         # Metadata
         entry.mtime = mtime_to_fat(result["mtime"])
@@ -626,7 +636,7 @@ class DatabaseGenerator:
                     tagentry = tagfiles[field][val]
                 except KeyError:
                     tagentry = TagEntry(val, sort)
-                    tagfiles[field].append(tagentry)
+                    tagfiles[field].append_sorted(tagentry)
                 entry[field] = tagentry
 
         # Combinations logic
@@ -646,7 +656,7 @@ class DatabaseGenerator:
                     tagentry = tagfiles[field][value.key]
                 except KeyError:
                     tagentry = value
-                    tagfiles[field].append(tagentry)
+                    tagfiles[field].append_sorted(tagentry)
                 index_entry[field] = tagentry
             index.append(index_entry)
 

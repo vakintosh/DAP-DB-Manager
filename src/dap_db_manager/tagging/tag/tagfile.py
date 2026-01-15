@@ -216,6 +216,8 @@ class TagFile:
                 raise ValueError(
                     f"Size mismatch: header says {size} bytes, but got {tf.size} bytes. File may be corrupted."
                 )
+            
+            tf._is_sorted = True  # Assume sorted after loading from file
 
             return tf
         except struct.error as e:

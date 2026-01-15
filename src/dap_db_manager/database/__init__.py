@@ -95,11 +95,16 @@ class Database:
         self.max_workers = min(32, cpu_count + 4)
         self.use_parallel = True  # Can be toggled via parameters
 
-        # Initialize scanner and generator with configured workers and dap_root
+        # Initialize scanner and generator with configured workers
+        # Get mount notation from config for path formatting (used only in generator)
+        mount_notation = self.config.get_mount_notation() if self.config else None
+        
         self._scanner = FileScanner(max_workers=self.max_workers)
+        
         self._generator = DatabaseGenerator(
             max_workers=self.max_workers,
             dap_root=dap_root,
+            mount_notation=mount_notation,
         )
 
         # Set default formats
@@ -335,13 +340,6 @@ class Database:
         """
         use_parallel = parallel if parallel is not None else self.use_parallel
 
-        # Build a set of existing file paths (normalized)
-        existing_paths = set()
-        for entry in self.index.entries:
-            if not entry.is_deleted():
-                # entry["path"] is already a TagEntry with .data attribute
-                existing_paths.add(entry["path"].data.lower())
-
         # Scan for all current files in music directory
         callback("Scanning music directory...")
         self._scanner.add_dir(
@@ -357,8 +355,36 @@ class Database:
             f"Scan complete: found {len(self.paths)} files ({len(self.failed)} failed)"
         )
 
-        # Normalize new paths for comparison
-        new_paths = {p.lower() for p in self.paths}
+        # Helper to normalize database paths for comparison (strip mount notation)
+        def normalize_db_path(path: str) -> str:
+            """Strip mount notation from database path for comparison."""
+            if self.config:
+                mount_notation = self.config.get_mount_notation()
+                if mount_notation and path.startswith(mount_notation + "/"):
+                    return path[len(mount_notation):].lower()
+            return path.lower()
+        
+        # Helper to normalize scanned paths for comparison (strip dap_root)
+        def normalize_scanned_path(path: str) -> str:
+            """Strip dap_root from scanned path for comparison."""
+            if self.dap_root:
+                normalized = path.replace("\\", "/")
+                dap_root_norm = self.dap_root.replace("\\", "/").lower()
+                if normalized.lower().startswith(dap_root_norm):
+                    clean = normalized[len(self.dap_root):]
+                    if not clean.startswith("/"):
+                        clean = "/" + clean
+                    return clean.lower()
+            return path.lower()
+
+        # Build set of existing database paths (normalized: without mount notation)
+        existing_paths = set()
+        for entry in self.index.entries:
+            if not entry.is_deleted():
+                existing_paths.add(normalize_db_path(entry["path"].data))
+
+        # Build set of scanned paths (normalized: without dap_root)
+        new_paths = {normalize_scanned_path(p) for p in self.paths}
 
         # Determine which files to add (not in database)
         paths_to_add = new_paths - existing_paths

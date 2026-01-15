@@ -91,7 +91,9 @@ class FileScanner:
     """Handles scanning and reading music files with multiprocessing support."""
 
     def __init__(
-        self, max_workers: Optional[int] = None, use_multiprocessing: bool = True
+        self,
+        max_workers: Optional[int] = None,
+        use_multiprocessing: bool = True,
     ):
         """Initialize the file scanner.
 
@@ -125,6 +127,21 @@ class FileScanner:
             self._executor = ThreadPoolExecutor(max_workers=self.max_workers)  # type: ignore[assignment]
 
         self._shutdown = False
+    
+    def _read_tags(self, path: str) -> Optional[Dict[str, Any]]:
+        """Read tags from a single file.
+
+        Args:
+            path: Path to the audio file
+
+        Returns:
+            Dictionary of tags or None if reading failed
+        """
+        try:
+            return tagging.read(path)
+        except Exception as e:
+            logging.debug("Failed to read tags from %s: %s", path, e)
+            return None
 
     def add_file(
         self,
@@ -171,8 +188,8 @@ class FileScanner:
         """
         # Use absolute path but don't resolve() to preserve case from filesystem
         path_obj = Path(path).absolute()
-        path = str(path_obj)
-        lowerpath = path.lower()
+        absolute_path = str(path_obj)
+        lowerpath = absolute_path.lower()
 
         if size is None or mtime is None:
             stat = path_obj.stat()
@@ -185,13 +202,13 @@ class FileScanner:
         except (KeyError, TypeError):
             if tags is None:
                 try:
-                    tags = tagging.read(path)
+                    tags = tagging.read(absolute_path)
                 except Exception as e:
                     # Catch any tag reading errors (corrupted files, unsupported formats, etc.)
-                    logging.debug("Failed to read tags from %s: %s", path, e)
+                    logging.debug("Failed to read tags from %s: %s", absolute_path, e)
                     tags = None
             if tags is None:
-                failed_list.append(path)
+                failed_list.append(absolute_path)
                 return
             # Store minimal tags to reduce memory usage
             minimal_tags = TagCache.extract_essential_tags(tags)
@@ -207,7 +224,12 @@ class FileScanner:
                 TagCache.set(lowerpath, ((size, mtime), minimal_tags))
                 # Move to end after update
                 TagCache.move_to_end(lowerpath)
-        paths_set.add(path)
+        
+        # Add ABSOLUTE path to paths_set (normalization happens in generator during _prepare_entry_data)
+        # Cache uses lowercase absolute paths as keys, so paths_set must also use absolute paths
+        paths_set.add(absolute_path)
+    
+
 
     def add_files(
         self,
