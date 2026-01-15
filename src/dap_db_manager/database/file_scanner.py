@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 import sys
 import logging
-from typing import Optional, Callable, List, Any, Tuple
+from typing import Optional, Callable, List, Any, Tuple, Dict
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from threading import Lock
 from ..tagging.tag.formats import SUPPORTED_EXTENSIONS as audio_formats
@@ -337,18 +337,44 @@ class FileScanner:
         original_root = str(path)
         batch_size = 100  # Process files in batches
 
-        # Collect all files first for parallel processing
+        # Collect all files using os.scandir for faster traversal (2-20x faster than os.walk)
+        # scandir gets filenames and stat info in one syscall, unlike os.walk
         all_files = []
-        for root, dirs, files in os.walk(original_root):
-            dirs.sort()
-            dircallback(root)
-            for file in sorted(files):
-                file_path = Path(root) / file
-                if file_path.suffix.lower() not in self.supported_extensions:
-                    continue
-                all_files.append(str(file_path))
-            if not recursive:
-                break
+        
+        def scan_directory(dir_path: str) -> None:
+            """Recursively scan directory using os.scandir for performance."""
+            try:
+                with os.scandir(dir_path) as entries:
+                    dirs_to_scan = []
+                    files_in_dir = []
+                    
+                    for entry in entries:
+                        try:
+                            if entry.is_dir(follow_symlinks=False):
+                                dirs_to_scan.append(entry.path)
+                            elif entry.is_file(follow_symlinks=False):
+                                # Check extension using entry name (no extra syscall)
+                                if Path(entry.name).suffix.lower() in self.supported_extensions:
+                                    files_in_dir.append(entry.path)
+                        except OSError:
+                            # Skip files/dirs we can't access
+                            continue
+                    
+                    # Sort and add files from this directory
+                    all_files.extend(sorted(files_in_dir))
+                    
+                    # Recurse into subdirectories if needed
+                    if recursive:
+                        for subdir in sorted(dirs_to_scan):
+                            dircallback(subdir)
+                            scan_directory(subdir)
+                            
+            except OSError as e:
+                logging.warning("Cannot access directory %s: %s", dir_path, e)
+        
+        # Start scanning from root
+        dircallback(original_root)
+        scan_directory(original_root)
 
         total_files = len(all_files)
 
