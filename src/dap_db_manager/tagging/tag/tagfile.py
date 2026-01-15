@@ -1,5 +1,6 @@
 from pathlib import Path
 import struct
+import bisect
 from operator import attrgetter
 
 from ...constants import MAGIC, ENCODING, SUPPORTED_VERSIONS
@@ -12,7 +13,14 @@ class TagFile:
     indices for O(1) lookups by different keys.
     """
 
-    __slots__ = ("magic", "entrydict", "entries", "offsets", "_index_by_sort")
+    __slots__ = (
+        "magic",
+        "entrydict",
+        "entries",
+        "offsets",
+        "_index_by_sort",
+        "_is_sorted",
+    )
 
     def __init__(self, entries=None):
         self.magic = MAGIC
@@ -20,6 +28,7 @@ class TagFile:
         self.entries = []
         self.offsets = {}
         self._index_by_sort = {}  # Fast lookup by sort key
+        self._is_sorted = False  # Will be set to True after explicit sort()
         if entries is not None:
             for entry in entries:
                 self.append(entry)
@@ -42,13 +51,69 @@ class TagFile:
         return sum(entry.size for entry in self.entries)
 
     def append(self, entry):
-        """Add entry with indexing for fast lookups."""
+        """Add entry with indexing for fast lookups.
+
+        Note: This marks the list as unsorted. Use append_sorted() for
+        maintaining sorted order during insertions.
+        """
         self.entrydict[entry.key] = entry
         self.entries.append(entry)
         # Build sort index for O(1) lookups
         if hasattr(entry, "sort"):
             sort_key = entry.sort.lower() if entry.sort else entry.key.lower()
             self._index_by_sort[sort_key] = entry
+        # Mark as unsorted since we're appending to end
+        self._is_sorted = False
+
+    def append_sorted(self, entry):
+        """Insert entry maintaining sort order for incremental updates.
+
+        Uses binary search to find insertion point - O(log n) lookup + O(n) insertion.
+        Much faster than append + full sort for incremental updates.
+
+        Args:
+            entry: TagEntry to insert in sorted position
+        """
+        self.entrydict[entry.key] = entry
+
+        if not self.entries or not self._is_sorted:
+            # First entry or list not sorted - just append and mark unsorted
+            self.entries.append(entry)
+            self._is_sorted = len(self.entries) == 1
+        else:
+            # Find insertion point using binary search
+            # Sort by entry.sort attribute (case-insensitive)
+            sort_val = (
+                entry.sort.lower() if hasattr(entry, "sort") and entry.sort else ""
+            )
+            idx = bisect.bisect_left(
+                self.entries,
+                sort_val,
+                key=lambda e: e.sort.lower() if hasattr(e, "sort") and e.sort else "",
+            )
+            self.entries.insert(idx, entry)
+            # Still sorted after insertion
+            self._is_sorted = True
+
+        # Build sort index for O(1) lookups
+        if hasattr(entry, "sort"):
+            sort_key = entry.sort.lower() if entry.sort else entry.key.lower()
+            self._index_by_sort[sort_key] = entry
+
+    def extend(self, entries):
+        """Bulk append entries - faster than repeated single appends.
+
+        Args:
+            entries: List of TagEntry objects to append
+        """
+        self.entries.extend(entries)
+        for entry in entries:
+            self.entrydict[entry.key] = entry
+            if hasattr(entry, "sort"):
+                sort_key = entry.sort.lower() if entry.sort else entry.key.lower()
+                self._index_by_sort[sort_key] = entry
+        # Mark as unsorted after bulk operation
+        self._is_sorted = False
 
     def find_by_sort(self, sort_key: str):
         """Fast O(1) lookup by sort key.
@@ -62,7 +127,14 @@ class TagFile:
         return self._index_by_sort.get(sort_key.lower())
 
     def sort(self):
-        """Sort entries and rebuild sort index."""
+        """Sort entries and rebuild sort index.
+
+        Skips sorting if entries are already sorted (from incremental insertions).
+        """
+        if self._is_sorted:
+            # Already sorted, skip expensive operation
+            return
+
         self.entries.sort(key=attrgetter("sort"))
         # Rebuild sort index after sorting
         self._index_by_sort.clear()
@@ -70,6 +142,7 @@ class TagFile:
             if hasattr(entry, "sort"):
                 sort_key = entry.sort.lower() if entry.sort else entry.key.lower()
                 self._index_by_sort[sort_key] = entry
+        self._is_sorted = True
 
     def to_file(self, f):
         self.offsets.clear()

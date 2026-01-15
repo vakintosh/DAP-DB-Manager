@@ -1,4 +1,5 @@
 import struct
+import bisect
 
 from .utils import fat_to_mtime, mtime_to_fat
 from .constants import (
@@ -24,6 +25,7 @@ class IndexFile:
         self.commitid = 0
         self.dirty = 0
         self.entries = entries if entries is not None else []
+        self._is_sorted = False  # Will be set to True after explicit sort()
 
         # The index must have references to the tagfiles so that it can
         # calculate the size part of the header.
@@ -33,7 +35,27 @@ class IndexFile:
         return self.entries.__getitem__(key)
 
     def append(self, entry):
+        """Append entry to end (marks as unsorted)."""
         self.entries.append(entry)
+        self._is_sorted = False
+
+    def append_sorted(self, entry):
+        """Insert entry maintaining sort order for incremental updates.
+
+        Uses binary search for O(log n) insertion point lookup.
+
+        Args:
+            entry: IndexEntry to insert in sorted position
+        """
+        if not self.entries or not self._is_sorted:
+            # Empty or unsorted - just append
+            self.entries.append(entry)
+            self._is_sorted = len(self.entries) == 1
+        else:
+            # Find insertion point using binary search on sort key
+            idx = bisect.bisect_left(self.entries, entry.sort, key=lambda e: e.sort)
+            self.entries.insert(idx, entry)
+            self._is_sorted = True
 
     @property
     def count(self):
@@ -60,7 +82,14 @@ class IndexFile:
     header_size = 6 * 4
 
     def sort(self):
+        """Sort entries by sort key.
+
+        Skips sorting if entries are already sorted.
+        """
+        if self._is_sorted:
+            return
         self.entries.sort(key=lambda entry: entry.sort)
+        self._is_sorted = True
 
     def to_file(self, f):
         self.commitid += 1
