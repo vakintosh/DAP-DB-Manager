@@ -388,7 +388,7 @@ class Database:
 
         # Determine which files to add (not in database)
         paths_to_add = new_paths - existing_paths
-
+        
         # Determine which files to mark as deleted (in database but not on disk)
         paths_to_delete = existing_paths - new_paths
 
@@ -470,8 +470,8 @@ class Database:
             callback(f"Marking {len(paths_to_delete)} deleted files...")
             for entry in self.index.entries:
                 if not entry.is_deleted():
-                    # entry["path"] is already a TagEntry with .data attribute
-                    if entry["path"].data.lower() in paths_to_delete:
+                    # Normalize DB path for comparison (strip mount notation)
+                    if normalize_db_path(entry["path"].data) in paths_to_delete:
                         entry.set_flag(FLAG_DELETED)
                         stats["deleted"] += 1
 
@@ -480,8 +480,9 @@ class Database:
             callback(f"Adding {len(paths_to_add)} new files...")
 
             # Filter paths to only include new files
+            # Must use normalized paths for comparison (same normalization as paths_to_add)
             original_paths = self.paths.copy()
-            self.paths = {p for p in original_paths if p.lower() in paths_to_add}
+            self.paths = {p for p in original_paths if normalize_scanned_path(p) in paths_to_add}
 
             # Generate database entries for new files only
             # This preserves existing entries and their indices
