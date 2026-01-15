@@ -34,7 +34,7 @@ Based on the original 2009 Python 2.x GUI implementation by **Mike Richards** an
 - ✅ Ubuntu 24.04 LTS (Kernel 6.17.0, aarch64 / Raspberry Pi)
 - 🔄 Windows (in progress)
 
-> **Note**: The generated database files were tested only on an **iPod Classic 7th Gen (2009)**.
+> **Note**: The generated database files were tested only on an **iPod Classic 7th Gen (2009)** running **Rockbox Ver. 37690baa5f-260101**.
 
 ---
 
