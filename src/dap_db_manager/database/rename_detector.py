@@ -14,6 +14,7 @@ import logging
 from typing import Dict, Set, Tuple, Optional, List
 from pathlib import Path
 from difflib import SequenceMatcher
+from collections import defaultdict
 
 
 def _calculate_fingerprint(
@@ -143,40 +144,108 @@ def detect_renames(
     # because we haven't scanned and read their tags. We only have file size and mtime
     # from os.stat(). So we'll rely primarily on path similarity and mtime matching.
 
+    # Build optimized indices for O(1) lookups
+    new_by_mtime: Dict[int, List[str]] = defaultdict(list)
+    new_by_filename: Dict[str, List[str]] = defaultdict(list)
+
+    for new_path, (_, new_mtime) in new_file_info.items():
+        if new_mtime:
+            # Round to 1-second precision for matching
+            new_by_mtime[int(round(new_mtime))].append(new_path)
+
+        # Index by filename for quick filtering
+        filename = Path(new_path).name.lower()
+        new_by_filename[filename].append(new_path)
+
     matched_new_paths: Set[str] = set()
     matched_old_paths: Set[str] = set()
 
-    # Strategy 1: Path similarity matching with mtime verification
-    # This is effective for simple renames like "01_Song.mp3" → "01 - Song.mp3"
-    # or folder renames like "Artist/Album" → "Artist - Album"
-
+    # Strategy 1: Exact mtime + filename match (fastest, highest confidence)
+    # O(n) complexity instead of O(n×m)
     for old_path_lower, entry in deleted_by_path.items():
         if old_path_lower in matched_old_paths:
             continue
 
-        best_match: Optional[str] = None
-        best_score = 0.0
-
-        # Get mtime for the deleted file
         old_mtime = entry.get("mtime")
+        if not old_mtime:
+            continue
 
-        for new_path in new_file_info.keys():
+        old_filename = Path(old_path_lower).name
+
+        # Quick lookup by mtime (O(1) instead of O(n))
+        candidates = new_by_mtime.get(int(round(old_mtime)), [])
+
+        for new_path in candidates:
             if new_path.lower() in matched_new_paths:
                 continue
 
-            # Get mtime from new file info
-            _, new_mtime = new_file_info[new_path]
+            new_filename = Path(new_path).name.lower()
 
-            # Calculate path similarity
+            # If filenames match exactly, strong signal for rename
+            if old_filename == new_filename:
+                _, new_mtime = new_file_info[new_path]
+                if new_mtime and abs(old_mtime - new_mtime) <= 1:
+                    renames[old_path_lower] = (new_path, "exact_metadata_match")
+                    matched_new_paths.add(new_path.lower())
+                    matched_old_paths.add(old_path_lower)
+                    logging.debug(
+                        "Rename detected (exact metadata): %s → %s",
+                        old_path_lower,
+                        new_path,
+                    )
+                    break
+
+    # Strategy 2: Path similarity with pre-filtering
+    # Only check candidates with similar filenames to reduce comparisons
+    for old_path_lower, entry in deleted_by_path.items():
+        if old_path_lower in matched_old_paths:
+            continue
+
+        old_filename = Path(old_path_lower).name
+        old_mtime = entry.get("mtime")
+
+        # Pre-filter: only check files with similar filenames
+        # Use first 3 chars as a simple filter
+        prefix = old_filename[:3].lower()
+        candidates = [
+            p
+            for p in new_file_info.keys()
+            if p.lower() not in matched_new_paths
+            and Path(p).name.lower().startswith(prefix)
+        ]
+
+        # If no prefix matches, fall back to filename-indexed candidates
+        if not candidates and old_filename in new_by_filename:
+            candidates = [
+                p
+                for p in new_by_filename[old_filename]
+                if p.lower() not in matched_new_paths
+            ]
+
+        # Limit candidates to avoid performance issues
+        if len(candidates) > 50:
+            # Sort by filename similarity and take top 50
+            candidates = sorted(
+                candidates,
+                key=lambda p: SequenceMatcher(
+                    None, old_filename, Path(p).name.lower()
+                ).ratio(),
+                reverse=True,
+            )[:50]
+
+        best_match: Optional[str] = None
+        best_score = 0.0
+
+        for new_path in candidates:
             similarity = _path_similarity(old_path_lower, new_path.lower())
 
             if similarity > best_score and similarity >= similarity_threshold:
-                # Additional verification: check if mtime is close (within 2 seconds)
+                _, new_mtime = new_file_info[new_path]
+
                 mtime_close = True
                 if old_mtime and new_mtime:
                     mtime_close = abs(old_mtime - new_mtime) <= 2
 
-                # High path similarity is a strong signal, especially with mtime match
                 if mtime_close or similarity >= 0.85:
                     best_score = similarity
                     best_match = new_path
@@ -192,42 +261,36 @@ def detect_renames(
                 best_match,
             )
 
-    # Strategy 2: Exact mtime matching (fallback for moved files)
-    # This handles cases where files are moved to completely different locations
-    # but the file timestamp remains identical
-
+    # Strategy 3: Fallback mtime matching for remaining files with lenient path check
     for old_path_lower, entry in deleted_by_path.items():
         if old_path_lower in matched_old_paths:
             continue
 
         old_mtime = entry.get("mtime")
-
         if not old_mtime:
-            continue  # Need mtime for this strategy
+            continue
 
-        for new_path in new_file_info.keys():
+        # Use index for O(1) lookup
+        candidates = new_by_mtime.get(int(round(old_mtime)), [])
+
+        for new_path in candidates:
             if new_path.lower() in matched_new_paths:
                 continue
 
             _, new_mtime = new_file_info[new_path]
-
-            # Exact mtime match (within 1 second)
-            if new_mtime:
-                mtime_diff = abs(old_mtime - new_mtime)
-                if mtime_diff <= 1:
-                    # Also check that filenames are similar (not completely different files)
-                    # This prevents false positives
-                    path_sim = _path_similarity(old_path_lower, new_path.lower())
-                    if path_sim >= 0.3:  # Very lenient threshold for moved files
-                        renames[old_path_lower] = (new_path, "metadata_match")
-                        matched_new_paths.add(new_path.lower())
-                        matched_old_paths.add(old_path_lower)
-                        logging.debug(
-                            "Rename detected (metadata match): %s → %s",
-                            old_path_lower,
-                            new_path,
-                        )
-                        break
+            if new_mtime and abs(old_mtime - new_mtime) <= 1:
+                # Check that filenames are similar (not completely different files)
+                path_sim = _path_similarity(old_path_lower, new_path.lower())
+                if path_sim >= 0.3:  # Very lenient threshold for moved files
+                    renames[old_path_lower] = (new_path, "metadata_match")
+                    matched_new_paths.add(new_path.lower())
+                    matched_old_paths.add(old_path_lower)
+                    logging.debug(
+                        "Rename detected (metadata match): %s → %s",
+                        old_path_lower,
+                        new_path,
+                    )
+                    break
 
     logging.info("Rename detection found %d potential renames", len(renames))
     return renames

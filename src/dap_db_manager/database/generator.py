@@ -33,6 +33,11 @@ def myprint(*args, **kwargs):
     sys.stdout.write(sep.join(str(a) for a in args) + end)
 
 
+# Worker-level cache for compiled formats (persists across batches in same process)
+_worker_format_cache = {}
+_worker_cache_key = None
+
+
 def process_batch_task(
     entries_data: List[Dict[str, Any]],
     format_strings: Dict[str, Tuple[str, Optional[str]]],
@@ -56,30 +61,41 @@ def process_batch_task(
     except ImportError:
         return []
 
-    # Compile formats
-    compiled_formats = {}
-    multiple_fields_map = {}  # field -> blank_tag
+    # Use cached compiled formats if available
+    global _worker_format_cache, _worker_cache_key
+    cache_key = (
+        frozenset(format_strings.items()),
+        tuple(sorted(multiple_fields_config)),
+    )
 
-    for field, (fmt_str, sort_str) in format_strings.items():
-        # Re-construct format objects
-        # Note: logic duplicated from generate() but necessary as objects aren't picklable
+    if _worker_cache_key != cache_key:
+        # Compile formats (only once per worker process per format configuration)
+        compiled_formats = {}
+        multiple_fields_map = {}  # field -> blank_tag
 
-        # Check if field is multiple based on config passed from main process
-        if field in multiple_fields_config:
-            multiple_fields_map[field] = "<BLANK>"
+        for field, (fmt_str, sort_str) in format_strings.items():
+            # Check if field is multiple based on config passed from main process
+            if field in multiple_fields_config:
+                multiple_fields_map[field] = "<BLANK>"
 
-        fmt = titleformat.compile(f"$if2({fmt_str},'<Untagged>')")
-        if sort_str is not None:
-            sort = titleformat.compile(f"$if2({sort_str},{fmt_str})")
-        else:
-            sort = None
-        compiled_formats[field] = (fmt, sort)
+            fmt = titleformat.compile(f"$if2({fmt_str},'<Untagged>')")
+            if sort_str is not None:
+                sort = titleformat.compile(f"$if2({sort_str},{fmt_str})")
+            else:
+                sort = None
+            compiled_formats[field] = (fmt, sort)
 
-    # Standard formats
-    compiled_formats["date"] = titleformat.compile("$if2($year(%date%),0)")
-    compiled_formats["discnumber"] = titleformat.compile("$if2(%discnumber%,0)")
-    compiled_formats["tracknumber"] = titleformat.compile("$if2(%tracknumber%,0)")
-    compiled_formats["bitrate"] = titleformat.compile("$if2(%bitrate%,0)")
+        # Standard formats
+        compiled_formats["date"] = titleformat.compile("$if2($year(%date%),0)")
+        compiled_formats["discnumber"] = titleformat.compile("$if2(%discnumber%,0)")
+        compiled_formats["tracknumber"] = titleformat.compile("$if2(%tracknumber%,0)")
+        compiled_formats["bitrate"] = titleformat.compile("$if2(%bitrate%,0)")
+
+        # Cache for future batches
+        _worker_format_cache = (compiled_formats, multiple_fields_map)
+        _worker_cache_key = cache_key
+    else:
+        compiled_formats, multiple_fields_map = _worker_format_cache
 
     processed_results = []
 
@@ -264,7 +280,10 @@ class DatabaseGenerator:
     """Handles database generation from cached tags with parallel processing."""
 
     def __init__(
-        self, max_workers: Optional[int] = None, dap_root: Optional[str] = None
+        self,
+        max_workers: Optional[int] = None,
+        dap_root: Optional[str] = None,
+        mount_notation: Optional[str] = None,
     ):
         """Initialize the database generator.
 
@@ -274,7 +293,9 @@ class DatabaseGenerator:
             dap_root: Optional DAP mount point for path translation.
                       When set, strips this prefix from file paths to create DAP-relative paths.
                       Example: dap_root="/Volumes/DAP" converts "/Volumes/DAP/Music/Song.mp3"
-                      to "/Music/Song.mp3" in the database.
+                      to "/Music/Song.mp3" (before mount_notation is added).
+            mount_notation: Optional mount notation to prepend to paths.
+                           Example: mount_notation="/<HDD0>" results in "/<HDD0>/Music/Song.mp3"
         """
         if max_workers is None:
             # For CPU-bound operations (formatting), use CPU count
@@ -282,6 +303,11 @@ class DatabaseGenerator:
 
         self.max_workers = max_workers
         self.dap_root = self._normalize_dap_root(dap_root)
+        # Pre-normalize dap_root for path operations to avoid repeated string operations
+        self.dap_root_normalized = (
+            self.dap_root.replace("\\", "/").lower() if self.dap_root else None
+        )
+        self.mount_notation = mount_notation.rstrip("/") if mount_notation else None
         self._lock = Lock()
 
         # Persistent pool - reused across operations for better performance
@@ -329,11 +355,16 @@ class DatabaseGenerator:
             format_strings[field] = (fmt_str, sort_str)
 
         # Batch progress updates
-        batch_size = 200  # Larger batch size for ProcessPool overhead
+        # Adaptive batch size balances parallelization overhead vs processing efficiency
+        # - Smaller batches: more frequent updates, higher overhead
+        # - Larger batches: fewer updates, better throughput
         total_paths = len(paths)
+        # Adaptive batch sizing: scale with dataset size and worker count
+        # Aim for ~4 batches per worker to balance overhead and parallelism
+        batch_size = min(max(total_paths // (self.max_workers * 4), 100), 500)
         sorted_paths = sorted(paths)
 
-        if use_parallel and total_paths > 500:
+        if use_parallel and total_paths > 200:
             self._generate_parallel(
                 sorted_paths,
                 format_strings,
@@ -370,21 +401,18 @@ class DatabaseGenerator:
 
         return multiple_fields
 
-    def _prepare_entry_data(self, path: str, cache) -> Optional[Dict[str, Any]]:
+    def _prepare_entry_data(
+        self, path: str, cache_entry: Tuple
+    ) -> Optional[Dict[str, Any]]:
         """Helper to prepare entry data from cache for processing."""
-        try:
-            (size, mtime), tags = cache[path.lower()]
-        except KeyError:
-            logging.warning("File not in cache, skipping: %s", path)
-            return None
+        (size, mtime), tags = cache_entry
 
         # Path translation
         if self.dap_root:
             normalized_path = path.replace("\\", "/")
-            normalized_root = self.dap_root.replace("\\", "/")
 
-            if normalized_path.lower().startswith(normalized_root.lower()):
-                clean_path = normalized_path[len(normalized_root) :]
+            if normalized_path.lower().startswith(self.dap_root_normalized):
+                clean_path = normalized_path[len(self.dap_root) :]
                 if not clean_path.startswith("/"):
                     clean_path = "/" + clean_path
             else:
@@ -405,6 +433,10 @@ class DatabaseGenerator:
             )
             if not clean_path.startswith("/"):
                 clean_path = "/" + clean_path
+
+        # Prepend mount notation if configured
+        if self.mount_notation:
+            clean_path = self.mount_notation + clean_path
 
         return {"path": clean_path, "mtime": mtime, "tags": tags}
 
@@ -428,10 +460,16 @@ class DatabaseGenerator:
             batch_paths = sorted_paths[i : i + batch_size]
             batch_data = []
 
+            # Pre-filter cache entries for batch to reduce repeated lookups
             for path in batch_paths:
-                entry_data = self._prepare_entry_data(path, cache)
-                if entry_data:
-                    batch_data.append(entry_data)
+                path_lower = path.lower()
+                cache_entry = cache.get(path_lower)
+                if cache_entry:
+                    entry_data = self._prepare_entry_data(path, cache_entry)
+                    if entry_data:
+                        batch_data.append(entry_data)
+                else:
+                    logging.warning("File not in cache, skipping: %s", path)
 
             # Process synchronously
             results = process_batch_task(
@@ -455,7 +493,7 @@ class DatabaseGenerator:
         callback,
         batch_size,
     ):
-        """Parallel generation using ProcessPoolExecutor."""
+        """Parallel generation using ProcessPoolExecutor with sliding window."""
         total_paths = len(sorted_paths)
         processed = 0
         cache = TagCache.get_cache()
@@ -474,40 +512,69 @@ class DatabaseGenerator:
             )
             return
 
+        # Sliding window: keep max 2x workers worth of futures in flight
+        max_futures_in_flight = self.max_workers * 2
         futures = {}
+        batch_index = 0
+        total_batches = (total_paths + batch_size - 1) // batch_size
 
-        # Prepare and submit batches
-        for i in range(0, total_paths, batch_size):
-            batch_paths = sorted_paths[i : i + batch_size]
+        def submit_batch(batch_start):
+            """Helper to prepare and submit a batch."""
+            batch_paths = sorted_paths[batch_start : batch_start + batch_size]
             batch_data = []
+
+            # Pre-filter cache entries for batch to reduce repeated lookups
             for path in batch_paths:
-                entry_data = self._prepare_entry_data(path, cache)
-                if entry_data:
-                    batch_data.append(entry_data)
+                path_lower = path.lower()
+                cache_entry = cache.get(path_lower)
+                if cache_entry:
+                    entry_data = self._prepare_entry_data(path, cache_entry)
+                    if entry_data:
+                        batch_data.append(entry_data)
+                else:
+                    logging.warning("File not in cache, skipping: %s", path)
 
             if batch_data:
                 future = self._executor.submit(
                     process_batch_task, batch_data, format_strings, multiple_fields_list
                 )
-                futures[future] = len(batch_data)
+                return future, len(batch_data)
+            return None, 0
 
-        for future in as_completed(futures):
-            try:
-                results = future.result()
+        # Submit initial window of batches
+        while batch_index < min(max_futures_in_flight, total_batches):
+            future, count = submit_batch(batch_index * batch_size)
+            if future:
+                futures[future] = count
+            batch_index += 1
 
-                # Assemble entries in main thread (fast)
-                # No lock needed for TagFile appends if we are single-threaded here
-                # (as_completed iterator yields one by one)
-                # BUT TagFiles are not thread safe if we were using ThreadPool with callbacks.
-                # Here we are in the main thread consuming results, so it's safe.
-                for result in results:
-                    self._assemble_entry(result, tagfiles, index, multiple_fields)
+        # Process completed futures and submit new ones
+        while futures:
+            for future in as_completed(futures):
+                try:
+                    results = future.result()
 
-                processed += len(results)
-                if callback:
-                    callback(processed, total_paths)
-            except Exception as e:
-                logging.error("Batch processing failed: %s", e)
+                    # Assemble entries in main thread (fast)
+                    for result in results:
+                        self._assemble_entry(result, tagfiles, index, multiple_fields)
+
+                    processed += len(results)
+                    if callback:
+                        callback(processed, total_paths)
+                except Exception as e:
+                    logging.error("Batch processing failed: %s", e)
+                finally:
+                    # Remove completed future and submit new batch if available
+                    del futures[future]
+
+                    if batch_index < total_batches:
+                        new_future, count = submit_batch(batch_index * batch_size)
+                        if new_future:
+                            futures[new_future] = count
+                        batch_index += 1
+
+                    # Break inner loop to restart as_completed with updated futures dict
+                    break
 
     def _assemble_entry(self, result: Dict[str, Any], tagfiles, index, multiple_fields):
         """Assemble IndexEntry and TagEntries from processed result."""
@@ -516,7 +583,7 @@ class DatabaseGenerator:
         # Path
         entry.path = TagEntry(result["path"], is_path=True)
         entry.path.index = index.count
-        tagfiles["path"].append(entry.path)
+        tagfiles["path"].append_sorted(entry.path)
 
         # Title
         try:
@@ -524,7 +591,7 @@ class DatabaseGenerator:
         except KeyError:
             entry.title = TagEntry("<Untagged>")
         entry.title.index = index.count
-        tagfiles["title"].append(entry.title)
+        tagfiles["title"].append_sorted(entry.title)
 
         # Metadata
         entry.mtime = mtime_to_fat(result["mtime"])
@@ -569,7 +636,7 @@ class DatabaseGenerator:
                     tagentry = tagfiles[field][val]
                 except KeyError:
                     tagentry = TagEntry(val, sort)
-                    tagfiles[field].append(tagentry)
+                    tagfiles[field].append_sorted(tagentry)
                 entry[field] = tagentry
 
         # Combinations logic
@@ -589,7 +656,7 @@ class DatabaseGenerator:
                     tagentry = tagfiles[field][value.key]
                 except KeyError:
                     tagentry = value
-                    tagfiles[field].append(tagentry)
+                    tagfiles[field].append_sorted(tagentry)
                 index_entry[field] = tagentry
             index.append(index_entry)
 

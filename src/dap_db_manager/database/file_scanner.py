@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 import sys
 import logging
-from typing import Optional, Callable, List, Any, Tuple
+from typing import Optional, Callable, List, Any, Tuple, Dict
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from threading import Lock
 from ..tagging.tag.formats import SUPPORTED_EXTENSIONS as audio_formats
@@ -91,7 +91,9 @@ class FileScanner:
     """Handles scanning and reading music files with multiprocessing support."""
 
     def __init__(
-        self, max_workers: Optional[int] = None, use_multiprocessing: bool = True
+        self,
+        max_workers: Optional[int] = None,
+        use_multiprocessing: bool = True,
     ):
         """Initialize the file scanner.
 
@@ -125,6 +127,21 @@ class FileScanner:
             self._executor = ThreadPoolExecutor(max_workers=self.max_workers)  # type: ignore[assignment]
 
         self._shutdown = False
+    
+    def _read_tags(self, path: str) -> Optional[Dict[str, Any]]:
+        """Read tags from a single file.
+
+        Args:
+            path: Path to the audio file
+
+        Returns:
+            Dictionary of tags or None if reading failed
+        """
+        try:
+            return tagging.read(path)
+        except Exception as e:
+            logging.debug("Failed to read tags from %s: %s", path, e)
+            return None
 
     def add_file(
         self,
@@ -171,8 +188,8 @@ class FileScanner:
         """
         # Use absolute path but don't resolve() to preserve case from filesystem
         path_obj = Path(path).absolute()
-        path = str(path_obj)
-        lowerpath = path.lower()
+        absolute_path = str(path_obj)
+        lowerpath = absolute_path.lower()
 
         if size is None or mtime is None:
             stat = path_obj.stat()
@@ -185,13 +202,13 @@ class FileScanner:
         except (KeyError, TypeError):
             if tags is None:
                 try:
-                    tags = tagging.read(path)
+                    tags = tagging.read(absolute_path)
                 except Exception as e:
                     # Catch any tag reading errors (corrupted files, unsupported formats, etc.)
-                    logging.debug("Failed to read tags from %s: %s", path, e)
+                    logging.debug("Failed to read tags from %s: %s", absolute_path, e)
                     tags = None
             if tags is None:
-                failed_list.append(path)
+                failed_list.append(absolute_path)
                 return
             # Store minimal tags to reduce memory usage
             minimal_tags = TagCache.extract_essential_tags(tags)
@@ -207,7 +224,12 @@ class FileScanner:
                 TagCache.set(lowerpath, ((size, mtime), minimal_tags))
                 # Move to end after update
                 TagCache.move_to_end(lowerpath)
-        paths_set.add(path)
+        
+        # Add ABSOLUTE path to paths_set (normalization happens in generator during _prepare_entry_data)
+        # Cache uses lowercase absolute paths as keys, so paths_set must also use absolute paths
+        paths_set.add(absolute_path)
+    
+
 
     def add_files(
         self,
@@ -315,18 +337,44 @@ class FileScanner:
         original_root = str(path)
         batch_size = 100  # Process files in batches
 
-        # Collect all files first for parallel processing
+        # Collect all files using os.scandir for faster traversal (2-20x faster than os.walk)
+        # scandir gets filenames and stat info in one syscall, unlike os.walk
         all_files = []
-        for root, dirs, files in os.walk(original_root):
-            dirs.sort()
-            dircallback(root)
-            for file in sorted(files):
-                file_path = Path(root) / file
-                if file_path.suffix.lower() not in self.supported_extensions:
-                    continue
-                all_files.append(str(file_path))
-            if not recursive:
-                break
+        
+        def scan_directory(dir_path: str) -> None:
+            """Recursively scan directory using os.scandir for performance."""
+            try:
+                with os.scandir(dir_path) as entries:
+                    dirs_to_scan = []
+                    files_in_dir = []
+                    
+                    for entry in entries:
+                        try:
+                            if entry.is_dir(follow_symlinks=False):
+                                dirs_to_scan.append(entry.path)
+                            elif entry.is_file(follow_symlinks=False):
+                                # Check extension using entry name (no extra syscall)
+                                if Path(entry.name).suffix.lower() in self.supported_extensions:
+                                    files_in_dir.append(entry.path)
+                        except OSError:
+                            # Skip files/dirs we can't access
+                            continue
+                    
+                    # Sort and add files from this directory
+                    all_files.extend(sorted(files_in_dir))
+                    
+                    # Recurse into subdirectories if needed
+                    if recursive:
+                        for subdir in sorted(dirs_to_scan):
+                            dircallback(subdir)
+                            scan_directory(subdir)
+                            
+            except OSError as e:
+                logging.warning("Cannot access directory %s: %s", dir_path, e)
+        
+        # Start scanning from root
+        dircallback(original_root)
+        scan_directory(original_root)
 
         total_files = len(all_files)
 

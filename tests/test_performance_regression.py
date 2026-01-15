@@ -10,7 +10,11 @@ Update baselines: pytest tests/test_performance_regression.py --update-baselines
 import json
 import time
 import pytest
+import statistics
 from pathlib import Path
+from dataclasses import dataclass, asdict
+from typing import List, Dict
+from datetime import datetime
 
 from dap_db_manager.database import Database
 from dap_db_manager.tagging.tag.tagfile import TagFile, TagEntry
@@ -25,63 +29,138 @@ THRESHOLD_WARNING = 10  # Warn if 10% slower
 THRESHOLD_FAIL = 25  # Fail if 25% slower
 
 
+@dataclass
+class PerformanceMetric:
+    """Statistical performance metric with trend tracking."""
+
+    mean: float
+    median: float
+    std_dev: float
+    min: float
+    max: float
+    samples: List[float]
+    last_updated: str
+
+    def is_regression(self, current: float, threshold_pct: float) -> bool:
+        """Check if current value represents a regression."""
+        # Use median instead of mean for robustness to outliers
+        baseline = self.median
+        change_pct = ((current - baseline) / baseline) * 100
+        return change_pct > threshold_pct
+
+    def add_sample(self, value: float, max_samples: int = 100):
+        """Add new sample and update statistics."""
+        self.samples.append(value)
+
+        # Keep only recent samples (rolling window)
+        if len(self.samples) > max_samples:
+            self.samples = self.samples[-max_samples:]
+
+        self.mean = statistics.mean(self.samples)
+        self.median = statistics.median(self.samples)
+        self.std_dev = statistics.stdev(self.samples) if len(self.samples) > 1 else 0.0
+        self.min = min(self.samples)
+        self.max = max(self.samples)
+        self.last_updated = datetime.now().isoformat()
+
+
 class PerformanceTracker:
-    """Track performance metrics against baselines."""
+    """Track performance metrics against baselines with statistical analysis."""
 
     def __init__(self):
-        self.baselines = self._load_baselines()
+        self.metrics: Dict[str, PerformanceMetric] = self._load_baselines()
         self.update_mode = False
+        self._cache_dirty = False
 
-    def _load_baselines(self):
-        """Load baseline performance metrics."""
+    def _load_baselines(self) -> Dict[str, PerformanceMetric]:
+        """Load baseline performance metrics with backward compatibility."""
         if BASELINE_FILE.exists():
             with open(BASELINE_FILE, "r") as f:
-                return json.load(f)
+                data = json.load(f)
+                metrics = {}
+                for name, metric_data in data.items():
+                    # Backward compatibility: convert old float format to new PerformanceMetric
+                    if isinstance(metric_data, (float, int)):
+                        # Old format: just a single baseline value
+                        metrics[name] = PerformanceMetric(
+                            mean=float(metric_data),
+                            median=float(metric_data),
+                            std_dev=0.0,
+                            min=float(metric_data),
+                            max=float(metric_data),
+                            samples=[float(metric_data)],
+                            last_updated=datetime.now().isoformat(),
+                        )
+                    else:
+                        # New format: PerformanceMetric dict
+                        metrics[name] = PerformanceMetric(**metric_data)
+                return metrics
         return {}
 
     def _save_baselines(self):
         """Save baseline performance metrics."""
+        if not self._cache_dirty:
+            return
+
         with open(BASELINE_FILE, "w") as f:
-            json.dump(self.baselines, f, indent=2)
+            data = {name: asdict(metric) for name, metric in self.metrics.items()}
+            json.dump(data, f, indent=2)
+        self._cache_dirty = False
 
     def track(self, test_name: str, duration: float, tolerance_multiplier: float = 1.0):
-        """Track performance and compare to baseline.
+        """Track performance metric with statistical analysis.
 
         Args:
             test_name: Name of the test
             duration: Measured duration in seconds
             tolerance_multiplier: Multiplier for thresholds (use >1 for naturally variable tests)
         """
+        # Get or create metric
+        if test_name not in self.metrics:
+            # First run - establish baseline
+            self.metrics[test_name] = PerformanceMetric(
+                mean=duration,
+                median=duration,
+                std_dev=0.0,
+                min=duration,
+                max=duration,
+                samples=[duration],
+                last_updated=datetime.now().isoformat(),
+            )
+            self._cache_dirty = True
+            pytest.skip(f"Established baseline for {test_name}: {duration:.4f}s")
+
+        metric = self.metrics[test_name]
+
         if self.update_mode:
-            self.baselines[test_name] = duration
-            self._save_baselines()
+            # Update baseline with new sample
+            metric.add_sample(duration)
+            self._cache_dirty = True
             return
 
-        if test_name not in self.baselines:
-            # No baseline, save current as baseline
-            self.baselines[test_name] = duration
-            self._save_baselines()
-            pytest.skip(
-                f"No baseline for {test_name}, saved {duration:.4f}s as baseline"
-            )
-
-        baseline = self.baselines[test_name]
-        change_pct = ((duration - baseline) / baseline) * 100
-
+        # Check for regression using statistical analysis
         threshold_warn = THRESHOLD_WARNING * tolerance_multiplier
         threshold_fail = THRESHOLD_FAIL * tolerance_multiplier
 
-        if change_pct > threshold_fail:
+        # Use median for robust comparison
+        baseline = metric.median
+        change_pct = ((duration - baseline) / baseline) * 100
+
+        # Also check if current value is beyond acceptable variance
+        # (using standard deviation)
+        z_score = (duration - metric.mean) / metric.std_dev if metric.std_dev > 0 else 0
+
+        if change_pct > threshold_fail or z_score > 3:  # 3 sigma rule
             pytest.fail(
                 f"Performance regression detected! {test_name} is {change_pct:.1f}% slower "
-                f"(baseline: {baseline:.4f}s, current: {duration:.4f}s)"
+                f"(median baseline: {baseline:.4f}s, current: {duration:.4f}s, z-score: {z_score:.2f})"
             )
-        elif change_pct > threshold_warn:
+        elif change_pct > threshold_warn or z_score > 2:
             import warnings
 
             warnings.warn(
                 f"Performance warning: {test_name} is {change_pct:.1f}% slower "
-                f"(baseline: {baseline:.4f}s, current: {duration:.4f}s)",
+                f"(median baseline: {baseline:.4f}s, current: {duration:.4f}s, z-score: {z_score:.2f})",
                 UserWarning,
             )
 
