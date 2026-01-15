@@ -419,14 +419,14 @@ class Database:
                 entry
                 for entry in self.index.entries
                 if not entry.is_deleted()
-                and entry["path"].data.lower() in paths_to_delete
+                and normalize_db_path(entry["path"].data) in paths_to_delete
             ]
 
             # Build file info for new paths (size, mtime)
             new_file_info = {}
             for path in self.paths:
-                path_lower = path.lower()
-                if path_lower in paths_to_add:
+                # Normalize path for comparison
+                if normalize_scanned_path(path) in paths_to_add:
                     try:
                         stat_result = os.stat(path)
                         new_file_info[path] = (
