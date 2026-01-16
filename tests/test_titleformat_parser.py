@@ -47,8 +47,8 @@ class TestTitleformatFields:
         mock_tag = Mock()
         mock_tag.get_string = Mock(return_value=["Test Artist"])
         
-        field = Field("artist")
-        result = field.eval(mock_tag)
+        fmt = titleformat_compile("%artist%")
+        result = fmt.format(mock_tag)
         assert result == "Test Artist"
 
     def test_field_missing_tag(self):
@@ -58,8 +58,8 @@ class TestTitleformatFields:
         mock_tag = Mock()
         mock_tag.get_string = Mock(return_value=[])
         
-        field = Field("artist")
-        result = field.eval(mock_tag)
+        fmt = titleformat_compile("%artist%")
+        result = fmt.format(mock_tag)
         # Should return empty string for missing fields
         assert result == ""
 
@@ -141,7 +141,7 @@ class TestTitleformatEvaluation:
         mock_tag = Mock()
         mock_tag.get_string = Mock(return_value=["Test Artist"])
         
-        result = fmt.eval(mock_tag)
+        result = fmt.format(mock_tag)
         assert result == "Test Artist"
 
     def test_eval_multiple_fields(self):
@@ -156,7 +156,7 @@ class TestTitleformatEvaluation:
             "title": ["Test Song"]
         }.get(x, []))
         
-        result = fmt.eval(mock_tag)
+        result = fmt.format(mock_tag)
         assert result == "Test Artist - Test Song"
 
     def test_eval_with_function(self):
@@ -168,7 +168,7 @@ class TestTitleformatEvaluation:
         mock_tag = Mock()
         mock_tag.get_string = Mock(return_value=["test artist"])
         
-        result = fmt.eval(mock_tag)
+        result = fmt.format(mock_tag)
         assert result == "TEST ARTIST"
 
     def test_eval_conditional(self):
@@ -180,13 +180,13 @@ class TestTitleformatEvaluation:
         # Tag with artist
         mock_tag1 = Mock()
         mock_tag1.get_string = Mock(return_value=["Test Artist"])
-        result1 = fmt.eval(mock_tag1)
+        result1 = fmt.format(mock_tag1)
         assert result1 == "Has artist"
         
         # Tag without artist
         mock_tag2 = Mock()
         mock_tag2.get_string = Mock(return_value=[])
-        result2 = fmt.eval(mock_tag2)
+        result2 = fmt.format(mock_tag2)
         assert result2 == "No artist"
 
 
@@ -268,7 +268,7 @@ class TestTitleformatIntegration:
             "title": ["Song Title"]
         }.get(x, []))
         
-        result = fmt.eval(mock_tag)
+        result = fmt.format(mock_tag)
         # Should produce properly formatted output
 
 
@@ -295,7 +295,7 @@ class TestTitleformatFunctionLibrary:
         mock_tag = Mock()
         mock_tag.get_string = Mock(return_value=["artist"])
         
-        result = fmt.eval(mock_tag)
+        result = fmt.format(mock_tag)
         assert result == "ARTIST"
 
     def test_lower_function(self):
@@ -306,7 +306,7 @@ class TestTitleformatFunctionLibrary:
         mock_tag = Mock()
         mock_tag.get_string = Mock(return_value=["ARTIST"])
         
-        result = fmt.eval(mock_tag)
+        result = fmt.format(mock_tag)
         assert result == "artist"
 
     def test_len_function(self):
@@ -317,7 +317,7 @@ class TestTitleformatFunctionLibrary:
         mock_tag = Mock()
         mock_tag.get_string = Mock(return_value=["Artist"])
         
-        result = fmt.eval(mock_tag)
+        result = fmt.format(mock_tag)
         assert result == "6"
 
     def test_left_function(self):
@@ -328,7 +328,7 @@ class TestTitleformatFunctionLibrary:
         mock_tag = Mock()
         mock_tag.get_string = Mock(return_value=["Artist"])
         
-        result = fmt.eval(mock_tag)
+        result = fmt.format(mock_tag)
         assert result == "Art"
 
     def test_num_function(self):
@@ -339,5 +339,5 @@ class TestTitleformatFunctionLibrary:
         mock_tag = Mock()
         mock_tag.get_string = Mock(return_value=["5"])
         
-        result = fmt.eval(mock_tag)
+        result = fmt.format(mock_tag)
         assert result == "05"

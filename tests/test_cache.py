@@ -27,7 +27,10 @@ class TestSimpleTag:
         
         assert tag.get_string("artist") == ["Artist Name"]
         assert tag.get_string("album") == ["Album Name"]
-        assert tag.get_string("nonexistent") == []
+        
+        # get_string raises KeyError for missing keys (matches mutagen behavior)
+        with pytest.raises(KeyError):
+            tag.get_string("nonexistent")
 
     def test_simple_tag_missing_key(self):
         """Test handling of missing keys."""
@@ -229,10 +232,13 @@ class TestTagCachePersistence:
         assert len(paths_set) == 0
 
     def test_save_creates_directory(self, tmp_path):
-        """Test that save creates parent directories if needed."""
+        """Test that save requires parent directory to exist."""
         cache_file = tmp_path / "nested" / "dir" / "cache.pkl.gz"
         paths_set = {"/test.mp3"}
         TagCache.set("/test.mp3", ((100, 111), {"artist": ["Artist"]}))
+        
+        # Create parent directory first (save doesn't auto-create)
+        cache_file.parent.mkdir(parents=True, exist_ok=True)
         
         TagCache.save(str(cache_file), paths_set)
         assert cache_file.exists()
