@@ -100,7 +100,7 @@ class TestIntegrationWorkflow:
         
         # Cache should contain data
         from dap_db_manager.database.cache import TagCache
-        bytes_used, _, _ = Tag Cache.get_current_memory_usage()
+        bytes_used, _, _ = TagCache.get_current_memory_usage()
         # Should have some cached data
 
 
