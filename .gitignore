@@ -22,5 +22,6 @@ music_test_folder
 Docker
 rockbox_backup_20260109
 rockbox_source
+test_automation_env
 # Virtual environments
 .venv
