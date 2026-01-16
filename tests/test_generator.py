@@ -54,7 +54,7 @@ class TestDatabaseGeneratorGenerate:
         
         paths = set()
         formats = {}
-       tagfiles = {}
+        tagfiles = {}
         index = []
         
         gen.generate(
