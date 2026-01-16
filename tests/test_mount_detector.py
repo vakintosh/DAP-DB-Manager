@@ -2,7 +2,7 @@
 
 import pytest
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock, tmp_path
+from unittest.mock import Mock, patch, MagicMock
 from dap_db_manager.database.mount_detector import MountDetector, MountInfo
 
 
