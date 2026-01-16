@@ -2,95 +2,61 @@
 
 import pytest
 from pathlib import Path
-from unittest.mock import Mock, patch
-from dap_db_manager.database.mount_detector import detect_mounts, MountInfo
+from unittest.mock import Mock, patch, MagicMock, tmp_path
+from dap_db_manager.database.mount_detector import MountDetector, MountInfo
 
 
-class TestMountDetection:
-    """Test mount point detection."""
+class TestMountDetector:
+    """Test MountDetector class."""
 
-    def test_detect_mounts_basic(self):
-        """Test basic mount detection."""
-        # Call get_mount_info or similar function if it exists
-        if hasattr(mount_detector, 'get_mount_info'):
-            result = mount_detector.get_mount_info()
-            assert result is not None
-        else:
-            pytest.skip("Mount detection function not implemented yet")
-
-    @patch('platform.system')
-    def test_detect_mounts_linux(self, mock_system):
-        """Test mount detection on Linux."""
-        mock_system.return_value = 'Linux'
+    def test_mount_detector_extract_prefix(self):
+        """Test extracting mount prefix from paths."""
+        # Test with mount notation
+        notation, path = MountDetector.extract_mount_prefix("/<HDD0>/Music/song.mp3")
+        assert notation == "/<HDD0>"
+        assert path == "/Music/song.mp3"
         
-        mounts = detect_mounts()
-        # Should return mount information
+        # Test without mount notation
+        notation2, path2 = MountDetector.extract_mount_prefix("/Music/song.mp3")
+        assert notation2 is None
+        assert path2 == "/Music/song.mp3"
 
-    @patch('platform.system')
-    def test_detect_mounts_darwin(self, mock_system):
-        """Test mount detection on macOS."""
-        mock_system.return_value = 'Darwin'
-        
-        mounts = detect_mounts()
-        # Should return mount information
-
-    @patch('platform.system')
-    def test_detect_mounts_windows(self, mock_system):
-        """Test mount detection on Windows."""
-        mock_system.return_value = 'Windows'
-        
-        mounts = detect_mounts()
-        # Should return mount information
+    def test_mount_detector_suggest_notation(self):
+        """Test suggesting mount notation."""
+        # Should return a default or detected notation
+        notation = MountDetector.suggest_mount_notation()
+        assert notation is not None
+        assert isinstance(notation, str)
 
 
 class TestMountInfo:
-    """Test MountInfo class (if it exists)."""
+    """Test MountInfo class."""
 
     def test_mount_info_creation(self):
         """Test creating MountInfo objects."""
-        # This test depends on the actual implementation
-        pytest.skip("MountInfo class signature unknown, skipping")
+        mount = MountInfo(
+            notation="/<HDD0>",
+            count=100,
+            sample_paths=["/Music/song1.mp3", "/Music/song2.mp3"]
+        )
+        assert mount.notation == "/<HDD0>"
+        assert mount.count == 100
+        assert len(mount.sample_paths) <= 5  # Only keeps first 5 samples
 
-
-class TestMountFiltering:
-    """Test mount point filtering."""
-
-    def test_filter_removable_devices(self):
-        """Test filtering for removable devices."""
-        # This test requires knowing the actual API
-        pytest.skip("Filtering API not yet determined")
-
-
-class TestMountPathResolution:
-    """Test resolving paths to mount points."""
-
-    def test_resolve_path_to_mount(self):
-        """Test resolving a file path to its mount point."""
-        # If there's a function to resolve paths to mounts
-        test_path = "/mnt/music/songs/test.mp3"
-        
-        # Should identify the mount point
+    def test_mount_info_repr(self):
+        """Test MountInfo string representation."""
+        mount = MountInfo("/<HDD0>", 50, ["/path/to/file.mp3"])
+        repr_str = repr(mount)
+        assert "MountInfo" in repr_str or "HDD0" in repr_str
 
 
 @pytest.mark.integration
-class TestMountDetectionIntegration:
+class TestMountDetectorIntegration:
     """Integration tests for mount detection."""
 
-    def test_detect_current_mounts(self):
-        """Test detecting actual current mounts."""
-        # Test whatever functions are actually available
-        if hasattr(mount_detector, 'get_mount_info'):
-            result = mount_detector.get_mount_info()
-            # Should return something
-        else:
-            pytest.skip("API not implemented")
-
-    def test_mount_info_accuracy(self):
-        """Test that detected mount info is accurate."""
-        mounts = detect_mounts()
-        
-        # Verify basic structure of returned data
-        if isinstance(mounts, list) and len(mounts) > 0:
-            # Check first mount has expected attributes
-            first_mount = mounts[0]
-            assert hasattr(first_mount, '__dict__') or isinstance(first_mount, dict)
+    def test_detect_from_storage_no_crash(self):
+        """Test that device storage detection doesn't crash."""
+        # Test with non-existent path
+        mounts = MountDetector.detect_from_device_storage("/nonexistent/path")
+        # Should return empty list or handle gracefully
+        assert isinstance(mounts, list)
