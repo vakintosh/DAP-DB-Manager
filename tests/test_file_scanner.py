@@ -53,12 +53,12 @@ class TestFileScannerSingleFile:
         TagCache.clear()
 
     def test_add_file_basic(self, tmp_path):
-       """Test adding a single file."""
+        """Test adding a single file."""
         # Create a test file (empty, just for path testing)
         test_file = tmp_path / "test.txt"
         test_file.write_text("test content")
 
-        scanner = FileScanner()
+        scanner = FileScanner() 
         paths_set = set()
         failed_list = []
 
@@ -159,7 +159,7 @@ class TestFileScannerDirectoryScan:
         # Create nested directory structure
         (tmp_path / "subdir1").mkdir()
         (tmp_path / "subdir2").mkdir()
-        (tmp_path /"subdir1" / "nested").mkdir()
+        (tmp_path / "subdir1" / "nested").mkdir()
 
         # Create some files
         (tmp_path / "file1.txt").write_text("content1")
