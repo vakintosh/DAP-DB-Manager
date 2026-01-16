@@ -1,21 +1,12 @@
-"""Tests for database I/O operations."""
+"""Tests for database I/O operations - Fixed API."""
 
 import pytest
 import tempfile
 from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
 from dap_db_manager.database.io import DatabaseIO
 from dap_db_manager.indexfile import IndexFile
 from dap_db_manager.tagging.tag.tagfile import TagFile
-
-
-class TestDatabaseIOInit:
-    """Test DatabaseIO initialization."""
-
-    def test_database_io_creation(self):
-        """Test creating DatabaseIO instance."""
-        io = DatabaseIO()
-        assert io is not None
+from dap_db_manager.constants import FILE_TAGS
 
 
 class TestDatabaseIOWrite:
@@ -23,174 +14,100 @@ class TestDatabaseIOWrite:
 
     def test_write_to_directory(self, tmp_path):
         """Test writing database to a directory."""
-        io = DatabaseIO()
-        
-        # Create minimal database components
+        # Create tagfiles and index
+        tagfiles = {tag: TagFile(tag) for tag in FILE_TAGS}
         index = IndexFile()
-        tagfiles = {}
         
-        # Write to temp directory
-        io.write(str(tmp_path), index, tagfiles)
+        # Write using class method
+        DatabaseIO.write(tagfiles, index, str(tmp_path))
         
-        # Should create database files in directory
-        db_path = tmp_path / "database_idx.tcd"
-        assert db_path.exists() or len(list(tmp_path.glob("*.tcd"))) > 0
+        # Should create database files
+        assert (tmp_path / "database_idx.tcd").exists()
 
-    def test_write_with_tagfiles(self, tmp_path):
-        """Test writing database with tag files."""
-        io = DatabaseIO()
-        
+    def test_write_with_parallel(self, tmp_path):
+        """Test parallel writing."""
+        tagfiles = {tag: TagFile(tag) for tag in FILE_TAGS}
         index = IndexFile()
-        tagfiles = {
-            "artist": TagFile("artist"),
-            "album": TagFile("album")
-        }
         
-        io.write(str(tmp_path), index, tagfiles)
-        
-        # Should create multiple tag files
-        tcd_files = list(tmp_path.glob("*.tcd"))
-        assert len(tcd_files) > 0
+        DatabaseIO.write(tagfiles, index, str(tmp_path), use_parallel=True)
+        assert (tmp_path / "database_idx.tcd").exists()
 
-    def test_write_to_nonexistent_directory(self):
-        """Test writing to non-existent directory."""
-        io = DatabaseIO()
-        
+    def test_write_sequential(self, tmp_path):
+        """Test sequential writing."""
+        tagfiles = {tag: TagFile(tag) for tag in FILE_TAGS}
         index = IndexFile()
-        tagfiles = {}
         
-        # Should handle gracefully or raise appropriate error
-        try:
-            io.write("/nonexistent/path", index, tagfiles)
-        except (FileNotFoundError, OSError):
-            # Expected exception
-            pass
+        DatabaseIO.write(tagfiles, index, str(tmp_path), use_parallel=False)
+        assert (tmp_path / "database_idx.tcd").exists()
 
 
 class TestDatabaseIORead:
     """Test database reading operations."""
 
-    def test_load_from_directory(self, tmp_path):
-        """Test loading database from directory."""
-        io = DatabaseIO()
-        
-        # Create a simple database first
+    def test_read_from_directory(self, tmp_path):
+        """Test reading database from directory."""
+        # First write a database
+        tagfiles = {tag: TagFile(tag) for tag in FILE_TAGS}
         index = IndexFile()
-        tagfiles = {"artist": TagFile("artist")}
-        io.write(str(tmp_path), index, tagfiles)
+        DatabaseIO.write(tagfiles, index, str(tmp_path))
         
-        # Now load it back
-        loaded_index, loaded_tagfiles = io.load(str(tmp_path))
+        # Now read it back
+        loaded_tagfiles, loaded_index = DatabaseIO.read(str(tmp_path))
         
+        assert loaded_tagfiles is not None
         assert loaded_index is not None
         assert isinstance(loaded_tagfiles, dict)
 
-    def test_load_nonexistent_directory(self):
-        """Test loading from non-existent directory."""
-        io = DatabaseIO()
-        
+    def test_read_nonexistent_directory(self):
+        """Test reading from non-existent directory."""
         with pytest.raises((FileNotFoundError, OSError)):
-            io.load("/nonexistent/directory")
-
-    def test_load_empty_directory(self, tmp_path):
-        """Test loading from empty directory."""
-        io = DatabaseIO()
-        
-        # Try to load from empty directory
-        try:
-            io.load(str(tmp_path))
-        except (FileNotFoundError, ValueError):
-            # Expected - no database files
-            pass
-
-
-class TestDatabaseIOValidation:
-    """Test database validation operations."""
-
-    def test_validate_valid_database(self, tmp_path):
-        """Test validating a valid database."""
-        io = DatabaseIO()
-        
-        # Create a valid database
-        index = IndexFile()
-        tagfiles = {}
-        io.write(str(tmp_path), index, tagfiles)
-        
-        # Validate should succeed
-        is_valid = io.validate(str(tmp_path))
-        # Validation behavior depends on implementation
-
-    def test_validate_invalid_directory(self):
-        """Test validating non-existent directory."""
-        io = DatabaseIO()
-        
-        is_valid = io.validate("/nonexistent/path")
-        assert is_valid is False or is_valid is None
+            DatabaseIO.read("/nonexistent/directory")
 
 
 class TestDatabaseIORoundTrip:
     """Test write/read round-trip operations."""
 
     def test_write_read_roundtrip(self, tmp_path):
-        """Test that write followed by read preserves data."""
-        io = DatabaseIO()
-        
-        # Create database with some data
+        """Test that write followed by read preserves structure."""
+        # Create database
+        original_tagfiles = {tag: TagFile(tag) for tag in FILE_TAGS}
         original_index = IndexFile()
-        original_tagfiles = {
-            "artist": TagFile("artist"),
-            "album": TagFile("album"),
-            "title": TagFile("title")
-        }
         
-        # Write database
-        io.write(str(tmp_path), original_index, original_tagfiles)
+        # Write
+        DatabaseIO.write(original_tagfiles, original_index, str(tmp_path))
         
-        # Read it back
-        loaded_index, loaded_tagfiles = io.load(str(tmp_path))
+        # Read back
+        loaded_tagfiles, loaded_index = DatabaseIO.read(str(tmp_path))
         
-        # Verify structure is preserved
-        assert loaded_index is not None
-        assert isinstance(loaded_tagfiles, dict)
-        # Tag file names should match
+        # Verify structure
         assert set(loaded_tagfiles.keys()) == set(original_tagfiles.keys())
 
 
-class TestDatabaseIOEdgeCases:
-    """Test edge cases and error handling."""
+class TestDatabaseIOCallbacks:
+    """Test database I/O callback functionality."""
 
-    def test_write_with_empty_tagfiles(self, tmp_path):
-        """Test writing with empty tagfiles dict."""
-        io = DatabaseIO()
-        
+    def test_write_with_callback(self, tmp_path):
+        """Test write with callback function."""
+        tagfiles = {tag: TagFile(tag) for tag in FILE_TAGS}
         index = IndexFile()
-        tagfiles = {}
         
-        # Should handle empty tagfiles
-        io.write(str(tmp_path), index, tagfiles)
+        callback_calls = []
+        def test_callback(*args, **kwargs):
+            callback_calls.append((args, kwargs))
+        
+        DatabaseIO.write(tagfiles, index, str(tmp_path), callback=test_callback)
+        
+        # Should have invoked callback
+        assert len(callback_calls) > 0
 
-    def test_write_with_none_values(self, tmp_path):
-        """Test writing with None values."""
-        io = DatabaseIO()
-        
-        index = IndexFile()
-        tagfiles = {}
-        
-        # Test various None scenarios if applicable
-        io.write(str(tmp_path), index, tagfiles)
 
-    def test_concurrent_access(self, tmp_path):
-        """Test behavior with concurrent access (if applicable)."""
-        io1 = DatabaseIO()
-        io2 = DatabaseIO()
-        
+class TestDatabaseIOOptimizations:
+    """Test I/O optimization features."""
+
+    def test_write_optimized_alias(self, tmp_path):
+        """Test write_optimized method."""
+        tagfiles = {tag: TagFile(tag) for tag in FILE_TAGS}
         index = IndexFile()
-        tagfiles = {}
         
-        # Write with first instance
-        io1.write(str(tmp_path), index, tagfiles)
-        
-        # Read with second instance
-        loaded_index, loaded_tagfiles = io2.load(str(tmp_path))
-        
-        assert loaded_index is not None
+        DatabaseIO.write_optimized(tagfiles, index, str(tmp_path))
+        assert (tmp_path / "database_idx.tcd").exists()
