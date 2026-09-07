@@ -138,22 +138,51 @@ class TestCLIValidateCommand:
         except (ImportError, AttributeError):
             pytest.skip("Validate command not implemented")
 
-    @patch('dap_db_manager.cli.commands.validate.DatabaseIO')
-    def test_validate_valid_database(self, mock_io):
+    @patch('dap_db_manager.cli.commands.validate.Database')
+    def test_validate_valid_database(self, mock_db_class):
         """Test validating a valid database."""
         try:
             from dap_db_manager.cli.commands.validate import cmd_validate
         except ImportError:
             pytest.skip("Validate command not implemented")
         
-        mock_io.read = Mock()
+        # Setup mock database
+        mock_db = Mock()
+        mock_db.index.count = 10
+        mock_db.index.entries = []  # Empty entries to avoid iteration issues
+        # Setup tagfiles mock
+        mock_db.tagfiles = {}
+        for tag in ["title", "artist", "album", "genre", "path", "composer", "comment", "album artist", "grouping", "canonicalartist"]:
+             mock_tf = Mock()
+             mock_tf.entries = []
+             mock_db.tagfiles[tag] = mock_tf
+        
+        mock_db_class.read.return_value = mock_db
         
         with tempfile.TemporaryDirectory() as tmpdir:
+            # Create dummy files so existence checks pass
+            db_path = Path(tmpdir)
+            for i in [0, 1, 2, 3, 4, 5, 6, 7, 8, 12]:
+                path = db_path / f"database_{i}.tcd"
+                path.write_bytes(b"dummy content")
+            
+            idx_path = db_path / "database_idx.tcd"
+            idx_path.write_bytes(b"dummy content")
+            
             args = argparse.Namespace(
-                directory=tmpdir,
+                db_dir=tmpdir,
                 json=False,
-                verbose=False
+                verbose=False,
+                quiet=True # Suppress console output
             )
+            
+            # Should not raise
+            try:
+                cmd_validate(args)
+            except SystemExit as e:
+                assert e.code == 0
+            except Exception as e:
+                pytest.fail(f"Validate failed: {e}")
 
     def test_validate_nonexistent_directory(self):
         """Test validate with non-existent directory."""
@@ -180,22 +209,34 @@ class TestCLIInspectCommand:
         except (ImportError, AttributeError):
             pytest.skip("Inspect command not implemented")
 
-    @patch('dap_db_manager.cli.commands.inspect.DatabaseIO')
-    def test_inspect_database(self, mock_io):
+    def test_inspect_database(self):
         """Test inspecting a database."""
         try:
             from dap_db_manager.cli.commands.inspect import cmd_inspect
         except ImportError:
             pytest.skip("Inspect command not implemented")
         
-        mock_io.read = Mock(return_value=({}, Mock()))
-        
+        from dap_db_manager.database.io import DatabaseIO
+        from dap_db_manager.tagging.tag.tagfile import TagFile
+        from dap_db_manager.indexfile import IndexFile
+        from dap_db_manager.constants import FILE_TAGS
+
         with tempfile.TemporaryDirectory() as tmpdir:
+            # Create a real valid database
+            tagfiles = {tag: TagFile() for tag in FILE_TAGS}
+            index = IndexFile()
+            DatabaseIO.write(tagfiles, index, tmpdir)
+            
             args = argparse.Namespace(
-                directory=tmpdir,
+                db_dir=tmpdir,
+                file_number=None, # Inspect index
                 json=False,
-                verbose=False
+                verbose=False,
+                quiet=True
             )
+            
+            # Should not raise exception
+            cmd_inspect(args)
 
 
 class TestCLIDetectMountsCommand:
