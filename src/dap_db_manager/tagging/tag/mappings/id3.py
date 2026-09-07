@@ -253,20 +253,28 @@ def setup_id3_mappings():
             return [t.partition("/")[0] for t in list(id3[frameid])]
 
         def total_getter(id3, key):
+            # The frame stores "number[/total]". If the total is not in the
+            # frame -- either because the frame is absent, or because it holds
+            # a bare number -- it lives in the TXXX frame instead.
             try:
                 sep, total = list(id3[frameid])[0].partition("/")[1:]
                 if sep:
                     return [total]
             except KeyError:
-                return list(id3[txxxframe])
-            raise KeyError(txxxframe)
+                pass
+
+            # Raises KeyError(txxxframe) if the total is stored nowhere.
+            return list(id3[txxxframe])
 
         def number_setter(id3, key, number):
             if isinstance(number, (list, tuple)):
                 number = number[0]
             number = str(number)
 
-            # Get total and make the number/total string
+            # Get total and make the number/total string.
+            # Side effect: if the total was stored in TXXX, this consolidates
+            # it into the number frame and drops the TXXX frame. The value is
+            # preserved; only its representation changes.
             try:
                 text = number + "/" + total_getter(id3, key)[0]
                 # Try to delete the TXXX:TOTALTRACKS frame if it exists

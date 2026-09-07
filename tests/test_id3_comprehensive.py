@@ -163,12 +163,53 @@ class TestID3Mappings:
         EasyID3.SetFallback(None, id3, "unicode_tag", ["üñîçødè"])
         assert id3["TXXX:unicode_tag"].encoding == 3
 
-        # 5. Test fallback to TXXX:TOTALTRACKS if TRCK is missing
-        # If TRCK exists but has no slash, the code raises KeyError instead of fallback (in current implementation)
-        # So we delete TRCK to test the TXXX fallback path
-        if "TRCK" in id3:
-            del id3["TRCK"]
-        
-        # Add TXXX
-        id3.add(mutagen.id3.TXXX(encoding=3, desc="TOTALTRACKS", text=["99"]))
-        assert EasyID3.Get["totaltracks"](id3, "totaltracks") == ["99"]
+
+class TestNumberPairTxxxFallback:
+    """`total_getter` must consult TXXX when the number frame carries no total.
+
+    The frame stores `number[/total]`. When the total is absent from the frame,
+    the convention (documented in id3.py) is that it lives in
+    `TXXX:TOTALTRACKS` / `TXXX:TOTALDISCS`. The original implementation only
+    reached that fallback when the number frame was *entirely missing*, so a
+    `TRCK` of "5" alongside a TXXX total raised KeyError.
+    """
+
+    def _id3(self, frame_id, frame_text, txxx_desc, txxx_text):
+        id3 = mutagen.id3.ID3()
+        if frame_text is not None:
+            id3.add(mutagen.id3.Frames[frame_id](encoding=3, text=[frame_text]))
+        if txxx_text is not None:
+            id3.add(mutagen.id3.TXXX(encoding=3, desc=txxx_desc, text=[txxx_text]))
+        return id3
+
+    def test_total_read_from_txxx_when_frame_has_no_slash(self):
+        id3 = self._id3("TRCK", "5", "TOTALTRACKS", "12")
+        assert EasyID3.Get["totaltracks"](id3, "totaltracks") == ["12"]
+
+    def test_totaldiscs_read_from_txxx_when_frame_has_no_slash(self):
+        id3 = self._id3("TPOS", "1", "TOTALDISCS", "4")
+        assert EasyID3.Get["totaldiscs"](id3, "totaldiscs") == ["4"]
+
+    def test_slash_total_still_wins_over_txxx(self):
+        """The in-frame total is authoritative when both are present."""
+        id3 = self._id3("TRCK", "5/12", "TOTALTRACKS", "99")
+        assert EasyID3.Get["totaltracks"](id3, "totaltracks") == ["12"]
+
+    def test_missing_total_everywhere_still_raises(self):
+        id3 = self._id3("TRCK", "5", "TOTALTRACKS", None)
+        with pytest.raises(KeyError):
+            EasyID3.Get["totaltracks"](id3, "totaltracks")
+
+    def test_setting_number_migrates_txxx_total_into_frame(self):
+        """Documented side effect: writing the number consolidates the total.
+
+        Because number_setter calls total_getter, a file storing its total in
+        TXXX has that value folded into the number frame and the TXXX frame
+        removed. The value is preserved, not lost, but the on-disk
+        representation changes as a side effect of writing tracknumber.
+        """
+        id3 = self._id3("TRCK", "5", "TOTALTRACKS", "12")
+        EasyID3.Set["tracknumber"](id3, "tracknumber", "7")
+
+        assert id3["TRCK"].text == ["7/12"]
+        assert "TXXX:TOTALTRACKS" not in id3
