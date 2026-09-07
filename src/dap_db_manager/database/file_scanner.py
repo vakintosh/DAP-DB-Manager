@@ -16,6 +16,34 @@ from ..tagging.tag.formats import SUPPORTED_EXTENSIONS as audio_formats
 from .cache import TagCache
 
 
+def is_excluded_name(name: str) -> bool:
+    """Return True for filesystem entries that must never be treated as audio.
+
+    macOS writes an AppleDouble sidecar (``._<name>``) next to every file it
+    modifies on filesystems without native xattr support (exFAT/FAT, which is
+    what most removable media and portable players are formatted with). The
+    sidecar keeps the original extension, so a suffix-only filter enqueues
+    ``._track.mp3`` as if it were a track. It is not an audio stream, so the
+    tag read fails and it is reported as a failed file.
+
+    Excluding these by name is a deliberate divergence from Rockbox, which
+    filters on suffix alone (``probe_file_format``) and lets the metadata
+    parser reject the file afterwards. Both approaches produce the same
+    database; skipping by name avoids opening and parsing a file that cannot
+    possibly be audio, and keeps the failure count meaningful.
+
+    ``__MACOSX`` is the archive-extraction equivalent and is excluded for the
+    same reason.
+
+    Args:
+        name: A bare entry name (not a full path).
+
+    Returns:
+        True if the entry should be skipped entirely.
+    """
+    return name.startswith("._") or name == "__MACOSX"
+
+
 def warn_no_tags():
     logging.warning(
         "Tagging support is disabled!\n"
@@ -59,7 +87,7 @@ def read_single_file_tags(
     try:
         # Import tagging here to avoid import issues in worker processes
         try:
-            from .. import tagging
+            from dap_db_manager import tagging
         except ImportError:
             return (path, None, None, None)
 
@@ -158,6 +186,10 @@ class FileScanner:
             failed_list: List to add failed file paths to
             callback: Callback function for progress updates
         """
+        if is_excluded_name(Path(file_path).name):
+            logging.debug("Skipping macOS metadata sidecar: %s", file_path)
+            return
+
         if Path(file_path).suffix.lower() not in self.supported_extensions:
             logging.debug("Skipping unsupported file format: %s", file_path)
             return
@@ -251,6 +283,9 @@ class FileScanner:
             file = str(file)
             if callback and i % batch_size == 0:
                 callback(f"Processing files... {i}/{len(files)}")
+            if is_excluded_name(Path(file).name):
+                logging.debug("Skipping macOS metadata sidecar: %s", file)
+                continue
             if Path(file).suffix.lower() not in self.supported_extensions:
                 logging.debug("Skipping unsupported file format: %s", file)
                 continue
@@ -350,6 +385,10 @@ class FileScanner:
                     
                     for entry in entries:
                         try:
+                            if is_excluded_name(entry.name):
+                                # AppleDouble sidecar or __MACOSX dir - never
+                                # descend into it, never enqueue it.
+                                continue
                             if entry.is_dir(follow_symlinks=False):
                                 dirs_to_scan.append(entry.path)
                             elif entry.is_file(follow_symlinks=False):
