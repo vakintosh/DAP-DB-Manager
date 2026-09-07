@@ -184,8 +184,9 @@ class TestTitleformatEvaluation:
         assert result1 == "Has artist"
         
         # Tag without artist
+        # Tag without artist
         mock_tag2 = Mock()
-        mock_tag2.get_string = Mock(return_value=[])
+        mock_tag2.get_string = Mock(side_effect=KeyError("artist"))
         result2 = fmt.format(mock_tag2)
         assert result2 == "No artist"
 

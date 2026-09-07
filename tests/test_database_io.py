@@ -15,7 +15,7 @@ class TestDatabaseIOWrite:
     def test_write_to_directory(self, tmp_path):
         """Test writing database to a directory."""
         # Create tagfiles and index
-        tagfiles = {tag: TagFile(tag) for tag in FILE_TAGS}
+        tagfiles = {tag: TagFile() for tag in FILE_TAGS}
         index = IndexFile()
         
         # Write using class method
@@ -26,7 +26,7 @@ class TestDatabaseIOWrite:
 
     def test_write_with_parallel(self, tmp_path):
         """Test parallel writing."""
-        tagfiles = {tag: TagFile(tag) for tag in FILE_TAGS}
+        tagfiles = {tag: TagFile() for tag in FILE_TAGS}
         index = IndexFile()
         
         DatabaseIO.write(tagfiles, index, str(tmp_path), use_parallel=True)
@@ -34,7 +34,7 @@ class TestDatabaseIOWrite:
 
     def test_write_sequential(self, tmp_path):
         """Test sequential writing."""
-        tagfiles = {tag: TagFile(tag) for tag in FILE_TAGS}
+        tagfiles = {tag: TagFile() for tag in FILE_TAGS}
         index = IndexFile()
         
         DatabaseIO.write(tagfiles, index, str(tmp_path), use_parallel=False)
@@ -47,7 +47,7 @@ class TestDatabaseIORead:
     def test_read_from_directory(self, tmp_path):
         """Test reading database from directory."""
         # First write a database
-        tagfiles = {tag: TagFile(tag) for tag in FILE_TAGS}
+        tagfiles = {tag: TagFile() for tag in FILE_TAGS}
         index = IndexFile()
         DatabaseIO.write(tagfiles, index, str(tmp_path))
         
@@ -70,7 +70,7 @@ class TestDatabaseIORoundTrip:
     def test_write_read_roundtrip(self, tmp_path):
         """Test that write followed by read preserves structure."""
         # Create database
-        original_tagfiles = {tag: TagFile(tag) for tag in FILE_TAGS}
+        original_tagfiles = {tag: TagFile() for tag in FILE_TAGS}
         original_index = IndexFile()
         
         # Write
@@ -88,7 +88,7 @@ class TestDatabaseIOCallbacks:
 
     def test_write_with_callback(self, tmp_path):
         """Test write with callback function."""
-        tagfiles = {tag: TagFile(tag) for tag in FILE_TAGS}
+        tagfiles = {tag: TagFile() for tag in FILE_TAGS}
         index = IndexFile()
         
         callback_calls = []
@@ -106,7 +106,7 @@ class TestDatabaseIOOptimizations:
 
     def test_write_optimized_alias(self, tmp_path):
         """Test write_optimized method."""
-        tagfiles = {tag: TagFile(tag) for tag in FILE_TAGS}
+        tagfiles = {tag: TagFile() for tag in FILE_TAGS}
         index = IndexFile()
         
         DatabaseIO.write_optimized(tagfiles, index, str(tmp_path))

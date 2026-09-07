@@ -37,9 +37,10 @@ class TestSimpleTag:
         tag_dict = {"artist": ["Artist"]}
         tag = SimpleTag(tag_dict)
         
-        # Missing keys should return empty list via get_string
-        assert tag.get_string("album") == []
-        
+        # Missing keys should raise KeyError via get_string (SimpleTag matches mutagen)
+        with pytest.raises(KeyError):
+             tag.get_string("album")
+
         # Direct access should raise KeyError
         with pytest.raises(KeyError):
             _ = tag["album"]
@@ -138,9 +139,10 @@ class TestTagCacheMemoryManagement:
         TagCache.set_memory_tracking(False)
         TagCache.set("/test.mp3", ((100, 111), {}))
         
-        # With tracking disabled, memory should be 0
+        # With tracking disabled, get_current_memory_usage forces recalculation
+        # So it should return actual usage > 0
         bytes_used, _, _ = TagCache.get_current_memory_usage()
-        assert bytes_used == 0
+        assert bytes_used > 0
 
         # Re-enable tracking
         TagCache.set_memory_tracking(True)

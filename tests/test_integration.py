@@ -49,7 +49,7 @@ class TestIntegrationWorkflow:
         db.write(str(output_dir))
         
         # Now load it
-        loaded_db = Database.load(str(output_dir))
+        loaded_db = Database.read(str(output_dir))
         
         assert loaded_db is not None
         # Verify some basic properties
@@ -67,20 +67,21 @@ class TestIntegrationWorkflow:
         
         # Save cache
         cache_file = tmp_path / "cache.pkl.gz"
-        db.save_cache(str(cache_file))
+        db.save_tags(str(cache_file))
         
         # Load and update
-        db2 = Database.load(str(output_dir))
+        db2 = Database.read(str(output_dir))
         if cache_file.exists():
-            db2.load_cache(str(cache_file))
+            db2.load_tags(str(cache_file))
         
         # Perform update (with same directory, should detect no changes)
-        added, deleted, renames = db2.update_database(str(TEST_DATA_DIR))
+        stats = db2.update_database(str(TEST_DATA_DIR))
         
         # Should have processed the files
-        assert isinstance(added, list)
-        assert isinstance(deleted, list)
-        assert isinstance(renames, dict)
+        assert isinstance(stats, dict)
+        assert "added" in stats
+        assert "deleted" in stats
+        assert "renamed" in stats
 
     @pytest.mark.skipif(not TEST_DATA_DIR.exists(), reason="Test data not available")
     def test_cache_persistence_workflow(self, tmp_path):
@@ -90,13 +91,13 @@ class TestIntegrationWorkflow:
         db.add_dir(str(TEST_DATA_DIR), recursive=True)
         
         cache_file = tmp_path / "cache.pkl.gz"
-        db.save_cache(str(cache_file))
+        db.save_tags(str(cache_file))
         
         assert cache_file.exists()
         
         # Load cache in new database
         db2 = Database()
-        db2.load_cache(str(cache_file))
+        db2.load_tags(str(cache_file))
         
         # Cache should contain data
         from dap_db_manager.database.cache import TagCache
@@ -153,7 +154,7 @@ class TestIntegrationEdgeCases:
         def callback(*args, **kwargs):
             pass
         
-        db.add_dir(str(TEST_DATA_DIR), recursive=True, callback=callback)
+        db.add_dir(str(TEST_DATA_DIR), recursive=True, dircallback=callback)
         
         # Should complete without crashing
 

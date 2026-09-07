@@ -50,12 +50,13 @@ class TestDatabaseGeneratorGenerate:
 
     def test_generate_with_empty_paths(self):
         """Test generation with no files."""
+        # Mock tagfiles to prevent iteration errors
         gen = DatabaseGenerator()
-        
-        paths = set()
-        formats = {}
-        tagfiles = {}
+        from dap_db_manager.tagging.tag.tagfile import TagFile
+        tagfiles = {tag: TagFile() for tag in ["artist", "album", "title", "genre", "path", "composer", "comment", "album artist", "grouping", "canonicalartist"]}
         index = []
+        formats = {}
+        paths = set()
         
         gen.generate(
             paths=paths,
