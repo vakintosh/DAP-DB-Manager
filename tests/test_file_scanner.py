@@ -406,3 +406,85 @@ class TestReadSingleFileTags:
         
         assert result[0] == "/mock/file.mp3"
         # Other fields depend on whether tagging module can be imported
+
+
+class TestAppleDoubleFiltering:
+    """AppleDouble sidecars (._name.ext) must never be treated as audio files.
+
+    On exFAT/FAT volumes -- the usual format for removable media and portable
+    players -- every macOS tag write creates a
+    `._<track>.mp3` sidecar. It carries an audio extension but is not an audio
+    stream, so suffix-only filtering enqueues it and it is then reported as a
+    failed file. See docs/rockbox-parity.md, Gap 3.
+    """
+
+    def _make_tree(self, root):
+        """Create a tree with one real track plus macOS cruft."""
+        real = Path(root) / "track.mp3"
+        real.write_bytes(b"\x00" * 16)
+        sidecar = Path(root) / "._track.mp3"
+        sidecar.write_bytes(b"\x00" * 16)
+
+        macosx = Path(root) / "__MACOSX"
+        macosx.mkdir()
+        (macosx / "track.mp3").write_bytes(b"\x00" * 16)
+
+        sub = Path(root) / "album"
+        sub.mkdir()
+        (sub / "b.mp3").write_bytes(b"\x00" * 16)
+        (sub / "._b.mp3").write_bytes(b"\x00" * 16)
+
+        return str(real), str(sidecar)
+
+    def test_add_dir_skips_appledouble_sidecars(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._make_tree(tmp)
+            paths, failed = set(), []
+            with FileScanner(use_multiprocessing=False) as scanner:
+                scanner.add_dir(tmp, paths, failed, dircallback=None, filecallback=None)
+
+            considered = set(paths) | set(failed)
+            offenders = [p for p in considered if os.path.basename(p).startswith("._")]
+            assert not offenders, f"AppleDouble sidecars were scanned: {offenders}"
+
+    def test_add_dir_does_not_recurse_into_macosx(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._make_tree(tmp)
+            paths, failed = set(), []
+            with FileScanner(use_multiprocessing=False) as scanner:
+                scanner.add_dir(tmp, paths, failed, dircallback=None, filecallback=None)
+
+            considered = set(paths) | set(failed)
+            offenders = [p for p in considered if "__MACOSX" in p]
+            assert not offenders, f"__MACOSX was traversed: {offenders}"
+
+    def test_add_file_skips_appledouble_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _, sidecar = self._make_tree(tmp)
+            paths, failed = set(), []
+            with FileScanner(use_multiprocessing=False) as scanner:
+                scanner.add_file(sidecar, paths, failed, callback=None)
+
+            assert sidecar not in paths
+            assert sidecar not in failed
+
+    def test_add_files_skips_appledouble_sidecar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            real, sidecar = self._make_tree(tmp)
+            paths, failed = set(), []
+            with FileScanner(use_multiprocessing=False) as scanner:
+                scanner.add_files([real, sidecar], paths, failed, callback=None)
+
+            considered = set(paths) | set(failed)
+            assert sidecar not in considered
+
+    def test_real_audio_file_is_still_scanned(self):
+        """Guard against over-filtering: a normal track must survive."""
+        with tempfile.TemporaryDirectory() as tmp:
+            real, _ = self._make_tree(tmp)
+            paths, failed = set(), []
+            with FileScanner(use_multiprocessing=False) as scanner:
+                scanner.add_dir(tmp, paths, failed, dircallback=None, filecallback=None)
+
+            considered = set(paths) | set(failed)
+            assert real in considered, "the real track was filtered out"
