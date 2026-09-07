@@ -42,6 +42,10 @@ def setup_format_specific_mappings():
             "totaltracks": "TotalTracks",
             "genre": "WM/Genre",
             "composer": "WM/Composer",
+            # Rockbox reads the native content-group atom for tag 8 (grouping).
+            # The foobar2000/GROUPING freeform key remains reachable via the
+            # ASF_custom_field user-key fallback.
+            "grouping": "WM/ContentGroupDescription",
             "performer": "foobar2000/PERFORMER",
             "comment": "Description",
         },
@@ -53,6 +57,10 @@ def setup_format_specific_mappings():
             "title": "\xa9nam",
             "genre": "\xa9gen",
             "composer": "\xa9wrt",
+            # Rockbox reads the native ©grp atom for tag 8 (grouping). The
+            # ----:com.apple.iTunes:GROUPING freeform key remains reachable via
+            # the MP4_custom_field user-key fallback.
+            "grouping": "\xa9grp",
             "performer": "----:com.apple.iTunes:PERFORMER",
             "comment": "\xa9cmt",
             "replaygain_album_gain": "----:com.apple.iTunes:replaygain_album_gain",
@@ -109,7 +117,16 @@ def setup_format_specific_mappings():
             try:
                 vals = list(str(tags[key]).partition(sep))
                 vals[index] = value
-                tags[key] = vals[0] + sep + vals[2]
+                
+                # If separator existed, keep it
+                if vals[1]:
+                    tags[key] = vals[0] + vals[1] + vals[2]
+                else:
+                    # Separator missing
+                    if index == 0:
+                        tags[key] = vals[0]
+                    else:
+                        tags[key] = vals[0] + sep + vals[2]
             except KeyError:
                 if index == 0:
                     tags[key] = value

@@ -227,3 +227,68 @@ class TestGroupingDefaultConversion:
             f"grouping registration warned: {[str(w.message) for w in grouping_warnings]}"
         )
 
+
+class TestGroupingNativeAtoms:
+    """`grouping` (Rockbox tag 8) must map to the NATIVE atom on MP4 and ASF.
+
+    Rockbox reads `©grp` (MP4) and `WM/ContentGroupDescription` (ASF). ddm
+    previously had no grouping entry in either dict, so lookups fell through to
+    the freeform foobar keys and correctly-tagged files produced an empty
+    database_8.tcd. See docs/rockbox-parity.md, Gap 1.
+    """
+
+    def _wrapper(self, fmt):
+        tags = MagicMock(spec=dict)
+        tags.__getitem__.side_effect = lambda k: tags.data.get(k)
+        tags.__setitem__.side_effect = lambda k, v: tags.data.update({k: v})
+        tags.__delitem__.side_effect = lambda k: tags.data.pop(k)
+        tags.data = {}
+
+        wrapper = Tag(tags)
+        wrapper.field_map = Tag.field_map
+        wrapper.tag_mapping = Tag.field_map[fmt]
+        return wrapper, tags
+
+    def test_mp4_grouping_maps_to_native_grp_atom(self):
+        assert "grouping" in Tag.field_map[MP4], "MP4 mapping has no grouping entry"
+        wrapper, tags = self._wrapper(MP4)
+
+        wrapper["grouping"] = "Chill Mix"
+        assert tags.data.get("\xa9grp") == "Chill Mix", (
+            f"grouping did not write the native \u00a9grp atom; got {tags.data!r}"
+        )
+
+    def test_mp4_grouping_reads_back_from_native_atom(self):
+        wrapper, tags = self._wrapper(MP4)
+        tags.data["\xa9grp"] = "Compilation Series"
+        value = wrapper["grouping"]
+        if isinstance(value, list):
+            value = value[0]
+        assert value == "Compilation Series"
+
+    def test_asf_grouping_maps_to_content_group_description(self):
+        assert "grouping" in Tag.field_map[ASF], "ASF mapping has no grouping entry"
+        wrapper, tags = self._wrapper(ASF)
+
+        wrapper["grouping"] = "Chill Mix"
+        assert tags.data.get("WM/ContentGroupDescription") == "Chill Mix", (
+            f"grouping did not write WM/ContentGroupDescription; got {tags.data!r}"
+        )
+
+    def test_asf_grouping_reads_back_from_content_group_description(self):
+        wrapper, tags = self._wrapper(ASF)
+        tags.data["WM/ContentGroupDescription"] = "Compilation Series"
+        value = wrapper["grouping"]
+        if isinstance(value, list):
+            value = value[0]
+        assert value == "Compilation Series"
+
+    def test_existing_mp4_mappings_untouched(self):
+        """Guard: adding grouping must not disturb neighbouring atoms."""
+        wrapper, tags = self._wrapper(MP4)
+        wrapper["artist"] = "Example Artist"
+        wrapper["album artist"] = "Example Artist"
+        wrapper["composer"] = "Example Composer"
+        assert tags.data["\xa9ART"] == "Example Artist"
+        assert tags.data["aART"] == "Example Artist"
+        assert tags.data["\xa9wrt"] == "Example Composer"
