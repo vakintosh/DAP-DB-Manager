@@ -56,6 +56,11 @@ def setup_default_mappings():
         "totaltracks": conv_number_list,
         "genre": conv_string_list,
         "composer": conv_string_list,
+        # Rockbox tag 8. The literal "grouping" key is the standard Vorbis
+        # comment name; per-format overrides (ID3 TIT1, MP4 ©grp, ASF
+        # WM/ContentGroupDescription) are registered in their own modules and
+        # inherit this converter.
+        "grouping": conv_string_list,
         "performer": conv_string_list,
         "comment": conv_string_list,
         "replaygain_album_gain": conv_number_list,

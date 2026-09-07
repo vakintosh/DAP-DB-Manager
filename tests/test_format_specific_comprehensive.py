@@ -187,4 +187,43 @@ class TestFormatSpecificMappings:
         assert getter(mock_tags) == "-9.0 dB"
 
 
+class TestGroupingDefaultConversion:
+    """`grouping` must be a first-class default field, not a fallback.
+
+    It was absent from the default basic-field table, so registering it for
+    MP4/ASF emitted `UserWarning: No conversion is defined for field
+    "grouping"` on every import, and Vorbis/FLAC/Opus resolved it only through
+    the user-field fallback.
+    """
+
+    def test_grouping_registered_in_default_mapping(self):
+        from dap_db_manager.tagging.tag.mappings.default import setup_default_mappings
+
+        setup_default_mappings()
+        assert "grouping" in Tag.field_map["default"], (
+            "grouping missing from the default field map"
+        )
+
+    def test_grouping_has_a_string_converter(self):
+        from dap_db_manager.tagging.tag.utils import conv_string_list
+        from dap_db_manager.tagging.tag.mappings.default import setup_default_mappings
+
+        setup_default_mappings()
+        assert Tag.field_map["default"]["grouping"]["convert"] is conv_string_list
+
+    def test_registering_grouping_emits_no_warning(self):
+        import warnings
+        from dap_db_manager.tagging.tag.mappings.default import setup_default_mappings
+
+        setup_default_mappings()
+        with warnings.catch_warnings(record=True) as caught:
+            warnings.simplefilter("always")
+            setup_format_specific_mappings()
+
+        grouping_warnings = [
+            w for w in caught if "grouping" in str(w.message)
+        ]
+        assert not grouping_warnings, (
+            f"grouping registration warned: {[str(w.message) for w in grouping_warnings]}"
+        )
 
