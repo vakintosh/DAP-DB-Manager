@@ -53,11 +53,14 @@ def print_memory_stats(label):
 
 def test_memory_leak_detection():
     """Test for memory leaks by running operations multiple times."""
-    tracemalloc.start()
-
     test_dir = Path(__file__).parent / "test_rename" / "music"
     if not test_dir.exists():
         pytest.skip(f"Test directory not found: {test_dir}")
+
+    # Started only after the skip guard: pytest.skip() raises, so a start()
+    # above this point would never reach the stop() below and would leave
+    # tracing enabled for the rest of the session.
+    tracemalloc.start()
 
     memory_snapshots = []
 
@@ -98,13 +101,14 @@ def test_memory_leak_detection():
 
 def test_database_operations():
     """Test database operations with test_rename data."""
-    tracemalloc.start()
-
     test_db_dir = Path(__file__).parent / "test_rename" / "db"
     test_music_dir = Path(__file__).parent / "test_rename" / "music"
 
     if not test_db_dir.exists() or not test_music_dir.exists():
         pytest.skip("Test directories not found")
+
+    # Started only after the skip guard -- see test_memory_leak_detection.
+    tracemalloc.start()
 
     # Test 1: Read existing database
     with Database() as db:
@@ -173,19 +177,21 @@ def test_cache_management():
     # Test cache limits
     initial_limit = TagCache.get_max_cache_memory()
 
-    # Set a lower limit to test trimming
-    TagCache.set_max_cache_memory(100)
+    try:
+        # Set a lower limit to test trimming
+        TagCache.set_max_cache_memory(100)
 
-    with Database() as db:
-        # Add files (some may be corrupted and that's OK)
-        db.add_dir(str(test_music_dir), recursive=False, dircallback=None)
+        with Database() as db:
+            # Add files (some may be corrupted and that's OK)
+            db.add_dir(str(test_music_dir), recursive=False, dircallback=None)
 
-        # Verify cache stays within limits
-        cache_bytes, cache_mb, cache_entries = TagCache.get_current_memory_usage()
-        assert cache_mb <= 100, f"Cache exceeded limit: {cache_mb:.2f} MB > 100 MB"
-
-    # Restore original limit
-    TagCache.set_max_cache_memory(initial_limit)
+            # Verify cache stays within limits
+            cache_bytes, cache_mb, cache_entries = TagCache.get_current_memory_usage()
+            assert cache_mb <= 100, f"Cache exceeded limit: {cache_mb:.2f} MB > 100 MB"
+    finally:
+        # Restore original limit even if the assertion above fails, otherwise
+        # every later test runs against a 100 MB cache.
+        TagCache.set_max_cache_memory(initial_limit)
 
     # Test cache cleanup
     TagCache.clear()
