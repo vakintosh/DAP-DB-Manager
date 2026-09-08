@@ -1,8 +1,8 @@
 # Preserve Runtime Stats Across `generate`
 
-**Status:** design approved, not implemented
+**Status:** implemented in 0.9.0
 **Date:** 2026-09-08
-**Target version:** 0.9.0 (behavioural change to `generate`)
+**Shipped in:** 0.9.0 (behavioural change to `generate`)
 
 ## Problem
 
