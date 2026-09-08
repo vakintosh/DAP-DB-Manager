@@ -34,7 +34,12 @@ jobs:
         run: uv python install 3.11
 
       - name: Install dependencies
-        run: uv sync --all-extras --dev
+        # Deliberately not --all-extras. The 'gui' extra pulls wxPython, which
+        # has no Linux wheel for this interpreter, so uv falls back to building
+        # it from source -- which needs GTK+ development headers the runner
+        # does not have, and fails. No test imports wx, so the extra buys
+        # nothing here.
+        run: uv sync --dev
 
       - name: Run tests
         # 'perf' tests are timing-sensitive and calibrated against a developer
