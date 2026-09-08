@@ -82,8 +82,6 @@ class TestDatabaseGenerator:
         gen = DatabaseGenerator(dap_root="/Volumes/DAP", mount_notation="/<HDD0>")
         assert gen.dap_root == "/Volumes/DAP"
         assert gen.mount_notation == "/<HDD0>"
-        # Normalize
-        assert gen.dap_root_normalized == "/volumes/dap"
         gen.shutdown()
 
     def test_normalize_dap_root(self):
@@ -101,7 +99,6 @@ class TestDatabaseGenerator:
         
         # Case 2: DAP root stripping
         generator.dap_root = "/Volumes/DAP"
-        generator.dap_root_normalized = "/volumes/dap"
         data = generator._prepare_entry_data("/Volumes/DAP/Music/Song.mp3", ((100, 200), {}))
         assert data["path"] == "/Music/Song.mp3"
         

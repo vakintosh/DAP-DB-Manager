@@ -19,7 +19,7 @@ except ImportError:
     titleformat = None  # type: ignore[assignment]
 
 from ..constants import FILE_TAGS, EMBEDDED_TAGS, FLAG_TRKNUMGEN
-from ..utils import mtime_to_fat
+from ..utils import mtime_to_fat, normalize_dap_path
 from ..tagging.tag.tagfile import TagEntry
 from ..indexfile import IndexEntry
 from .cache import TagCache
@@ -303,10 +303,6 @@ class DatabaseGenerator:
 
         self.max_workers = max_workers
         self.dap_root = self._normalize_dap_root(dap_root)
-        # Pre-normalize dap_root for path operations to avoid repeated string operations
-        self.dap_root_normalized = (
-            self.dap_root.replace("\\", "/").lower() if self.dap_root else None
-        )
         self.mount_notation = mount_notation.rstrip("/") if mount_notation else None
         self._lock = Lock()
 
@@ -407,36 +403,18 @@ class DatabaseGenerator:
         """Helper to prepare entry data from cache for processing."""
         (size, mtime), tags = cache_entry
 
-        # Path translation
-        if self.dap_root:
-            normalized_path = path.replace("\\", "/")
-
-            if normalized_path.lower().startswith(self.dap_root_normalized):
-                clean_path = normalized_path[len(self.dap_root) :]
-                if not clean_path.startswith("/"):
-                    clean_path = "/" + clean_path
-            else:
-                logging.warning(
-                    "File path '%s' does not start with dap_root '%s'. Skipping.",
-                    path,
-                    self.dap_root,
-                )
-                return None
-        else:
-            from pathlib import PureWindowsPath, PurePosixPath
-
-            path_obj = PureWindowsPath(path) if ":" in path else PurePosixPath(path)
-            clean_path = str(
-                PurePosixPath(
-                    *path_obj.parts[1:] if path_obj.anchor else path_obj.parts
-                )
+        # Path translation -- shared with Database.update via utils so the two
+        # cannot drift apart.
+        clean_path = normalize_dap_path(
+            path, dap_root=self.dap_root, mount_point=self.mount_notation
+        )
+        if clean_path is None:
+            logging.warning(
+                "File path '%s' does not start with dap_root '%s'. Skipping.",
+                path,
+                self.dap_root,
             )
-            if not clean_path.startswith("/"):
-                clean_path = "/" + clean_path
-
-        # Prepend mount notation if configured
-        if self.mount_notation:
-            clean_path = self.mount_notation + clean_path
+            return None
 
         return {"path": clean_path, "mtime": mtime, "tags": tags}
 
