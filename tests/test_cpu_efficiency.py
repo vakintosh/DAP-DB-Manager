@@ -72,6 +72,7 @@ def test_music_dir():
 class TestCPUEfficiency:
     """Test CPU efficiency of database operations."""
 
+    @pytest.mark.perf
     def test_parallel_processing_speedup(self, test_music_dir):
         """Test that parallel processing provides significant speedup."""
         # Test with multiprocessing (CPU-bound optimization)

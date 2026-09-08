@@ -174,6 +174,7 @@ def performance_tracker(request):
     return tracker
 
 
+@pytest.mark.perf
 class TestPerformanceRegression:
     """Performance regression tests."""
 
