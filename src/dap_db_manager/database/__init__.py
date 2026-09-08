@@ -55,7 +55,12 @@ class Database:
     managing Rockbox database files.
     """
 
-    def __init__(self, config: Optional[Config] = None, dap_root: Optional[str] = None):
+    def __init__(
+        self,
+        config: Optional[Config] = None,
+        dap_root: Optional[str] = None,
+        stats_preserver=None,
+    ):
         """Initialize a new Database instance.
 
         Args:
@@ -106,6 +111,7 @@ class Database:
             max_workers=self.max_workers,
             dap_root=dap_root,
             mount_notation=mount_notation,
+            stats_preserver=stats_preserver,
         )
 
         # Set default formats

@@ -88,7 +88,11 @@ class TestGeneratePathValidation:
         assert exc.value.code == ExitCode.SUCCESS
         
         # Verify Database initialized with dap_root
-        mock_db_class.assert_called_with(config=mock_config_class.return_value, dap_root=str(dap_root))
+        mock_db_class.assert_called_with(
+            config=mock_config_class.return_value,
+            dap_root=str(dap_root),
+            stats_preserver=None,  # no existing database in the temp output dir
+        )
 
     def test_dap_root_validation_failure(self, tmp_path, mock_args):
         """Test failure when music dir is NOT inside dap root."""

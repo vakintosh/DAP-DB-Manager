@@ -1,6 +1,6 @@
 # Rockbox Tag-Cache Parity Audit
 
-**ddm version audited:** 0.8.1 (`pyproject.toml`)
+**ddm version audited:** 0.9.0 (`pyproject.toml`)
 **Upstream reference:** Rockbox firmware `apps/tagcache.{c,h}` (5,523 + 218 lines)
 **Date:** 2026-09-07
 

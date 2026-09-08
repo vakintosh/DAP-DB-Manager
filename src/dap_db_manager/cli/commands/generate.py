@@ -17,6 +17,7 @@ from rich.console import Console
 from rich.table import Table
 
 from ...database import Database
+from ...database.stats_preserver import StatsPreserver, read_existing_stats
 from ...database.cache import TagCache
 from ...config import Config
 from ...constants import FILE_TAGS
@@ -111,8 +112,49 @@ def cmd_generate(args: argparse.Namespace) -> None:
             device_path, callback=logging.info if not use_json else None
         )
 
+    # Resolve the output directory up front: the runtime stats have to be read
+    # from the database being replaced *before* generation overwrites it.
+    if args.output:
+        output_path = Path(args.output).resolve()
+    else:
+        output_path = music_path / ".rockbox"
+
+    no_preserve = getattr(args, "no_preserve_stats", False)
+    preserve_from = getattr(args, "preserve_stats_from", None)
+
+    if no_preserve and preserve_from:
+        msg = "--no-preserve-stats cannot be combined with --preserve-stats-from"
+        if use_json:
+            json_output(
+                ErrorResponse(error="invalid_input", message=msg),
+                ExitCode.INVALID_INPUT,
+            )
+        logging.error(msg)
+        print(f"error: {msg}", file=sys.stderr)
+        sys.exit(ExitCode.INVALID_INPUT)
+
+    stats_preserver = None
+    if not no_preserve:
+        stats_dir = str(Path(preserve_from).resolve()) if preserve_from else str(output_path)
+        existing_stats = read_existing_stats(stats_dir, dap_root=dap_root)
+        if existing_stats:
+            stats_preserver = StatsPreserver(existing_stats)
+            if not use_json:
+                # console is not constructed until later in this function.
+                logging.info(
+                    "Preserving runtime stats from %d existing entries",
+                    len(existing_stats),
+                )
+        elif preserve_from:
+            # Explicit source that yielded nothing: say so rather than silently
+            # falling back to --output.
+            logging.warning(
+                "No readable database in %s; rebuilding without preserved stats.",
+                stats_dir,
+            )
+
     # Create database instance
-    db = Database(config=config, dap_root=dap_root)
+    db = Database(config=config, dap_root=dap_root, stats_preserver=stats_preserver)
 
     # Log mount notation
     mount_notation = db.config.get_mount_notation()
@@ -250,6 +292,7 @@ def cmd_generate(args: argparse.Namespace) -> None:
         f"\n[green]✓[/green] Scanned {total_files} files ({failed_files} failed)"
     )
 
+
     if failed_files > 0:
         logging.warning("Failed to read %s files:", failed_files)
         for failed in db.failed[:10]:  # Show first 10
@@ -314,12 +357,14 @@ def cmd_generate(args: argparse.Namespace) -> None:
 
     console.print(f"[green]✓[/green] Generated {db.index.count} database entries")
 
-    # Write database to output directory
-    if args.output:
-        output_path = Path(args.output).resolve()
-    else:
-        output_path = music_path / ".rockbox"
+    # Reported after generation, when the counters are final. A partial restore
+    # that looks complete is the specific failure this feature exists to avoid,
+    # so this line is unconditional whenever stats preservation ran.
+    if stats_preserver is not None:
+        console.print(f"[green]✓[/green] {stats_preserver.summary(db.index.count)}")
 
+    # Write database to output directory (output_path resolved earlier, before
+    # the existing database was read for stats preservation)
     # Validate output directory can be created
     try:
         output_path.mkdir(parents=True, exist_ok=True)
