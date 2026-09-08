@@ -5,6 +5,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 import argparse
+from tests.conftest import music_test_folder
 
 
 class TestUpdateCommandBasics:
@@ -188,7 +189,7 @@ class TestUpdateCommandIntegration:
     """Integration tests for update command."""
 
     @pytest.mark.skipif(
-        not Path("/Users/v/PYTHON_PROJECTS/rdbm/rockbox-db-manager/music_test_folder").exists(),
+        not music_test_folder().exists(),
         reason="Test data not available"
     )
     def test_update_with_real_data(self):

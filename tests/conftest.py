@@ -1,5 +1,6 @@
 """Pytest configuration and fixtures."""
 
+import os
 import sys
 import tracemalloc
 from pathlib import Path
@@ -82,3 +83,22 @@ def sample_tagfile():
 def sample_database():
     """Create a sample Database for testing."""
     return Database()
+
+
+def music_test_folder() -> Path:
+    """Locate the shared music fixture directory.
+
+    The suite previously hardcoded an absolute path into a sibling checkout,
+    so these tests only ran on one machine at one path and silently skipped
+    everywhere else. Resolution order:
+
+    1. ``$DDM_TEST_DATA`` -- explicit override, e.g. in CI or a container.
+    2. ``<repo>/../test-fixtures/music_test_folder`` -- the default layout.
+
+    Tests guard on ``music_test_folder().exists()`` and skip when the fixture
+    data is unavailable, so a checkout without it still runs the rest.
+    """
+    env = os.environ.get("DDM_TEST_DATA")
+    if env:
+        return Path(env)
+    return Path(__file__).parent.parent.parent / "test-fixtures" / "music_test_folder"
