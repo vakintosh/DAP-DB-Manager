@@ -16,6 +16,7 @@ from dap_db_manager.utils import mtime_to_fat, fat_to_mtime
 from dap_db_manager.indexfile import IndexFile, IndexEntry
 
 
+@pytest.mark.perf
 class TestUtilsBenchmarks:
     """Benchmark utility functions."""
 
@@ -34,6 +35,7 @@ class TestUtilsBenchmarks:
         assert isinstance(result, float)
 
 
+@pytest.mark.perf
 class TestTagFileBenchmarks:
     """Benchmark TagFile operations."""
 
@@ -80,6 +82,7 @@ class TestTagFileBenchmarks:
         assert result.count == 1000
 
 
+@pytest.mark.perf
 class TestIndexFileBenchmarks:
     """Benchmark IndexFile operations."""
 
@@ -104,6 +107,7 @@ class TestIndexFileBenchmarks:
         pytest.skip("Requires complex TagEntry/TagFile setup")
 
 
+@pytest.mark.perf
 class TestTitleformatBenchmarks:
     """Benchmark titleformat parsing and evaluation."""
 
@@ -149,6 +153,7 @@ class TestTitleformatBenchmarks:
         assert result is not None
 
 
+@pytest.mark.perf
 class TestDatabaseBenchmarks:
     """Benchmark Database operations."""
 
@@ -173,6 +178,7 @@ class TestDatabaseBenchmarks:
         assert db.index.count >= 50
 
 
+@pytest.mark.perf
 class TestTagReadingBenchmarks:
     """Benchmark tag reading operations."""
 
