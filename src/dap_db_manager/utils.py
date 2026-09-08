@@ -1,4 +1,6 @@
 import time
+from pathlib import PurePosixPath, PureWindowsPath
+from typing import Optional
 
 
 def mtime_to_fat(mtime: float) -> int:
@@ -49,3 +51,56 @@ def fat_to_mtime(fat: int) -> float:
     second = tim & 0x1F
     t = time.mktime((year, month, day, hour, minute, second, -1, -1, -1))
     return t
+
+
+def normalize_dap_path(
+    path: Optional[str],
+    dap_root: Optional[str] = None,
+    mount_point: Optional[str] = None,
+) -> Optional[str]:
+    """Translate a local filesystem path into the path stored in the database.
+
+    Rockbox stores paths as the device sees them, e.g. ``/<HDD0>/Music/Song.mp3``.
+    When generating on a PC the local prefix has to be stripped and the device's
+    mount notation prepended.
+
+    Args:
+        path: Local path to the file.
+        dap_root: Local root to strip, e.g. ``/Volumes/DAP``. Matching is
+            case-insensitive, because macOS and Windows filesystems are, and the
+            casing a user types for a mount point is not guaranteed to match the
+            casing the OS reports. The remainder of the path keeps its original
+            case.
+        mount_point: Device mount notation to prepend, e.g. ``/<HDD0>``.
+
+    Returns:
+        The normalized path, or ``None`` if ``path`` is empty or ``dap_root`` was
+        given and ``path`` does not live under it. Callers treat ``None`` as
+        "skip this file".
+    """
+    if not path:
+        return None
+
+    normalized = path.replace("\\", "/")
+
+    if dap_root:
+        root = str(dap_root).rstrip("/").rstrip("\\").replace("\\", "/")
+        if root:
+            if not normalized.lower().startswith(root.lower()):
+                # Outside the DAP root; the caller cannot produce a device path.
+                return None
+            normalized = normalized[len(root) :]
+    else:
+        # No root to strip, so drop any drive letter or anchor instead:
+        # "E:\Music\Song.mp3" -> "/Music/Song.mp3".
+        path_obj = PureWindowsPath(path) if ":" in path else PurePosixPath(path)
+        parts = path_obj.parts[1:] if path_obj.anchor else path_obj.parts
+        normalized = str(PurePosixPath(*parts)) if parts else "/"
+
+    if not normalized.startswith("/"):
+        normalized = "/" + normalized
+
+    if mount_point:
+        normalized = mount_point.rstrip("/") + normalized
+
+    return normalized

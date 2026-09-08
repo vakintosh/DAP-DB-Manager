@@ -21,6 +21,7 @@ from ..constants import FORMATTED_TAGS, FILE_TAGS, FLAG_DELETED
 from ..tagging.tag.tagfile import TagFile
 from ..indexfile import IndexFile
 from ..config import Config
+from ..utils import normalize_dap_path
 
 from .cache import TagCache
 from .file_scanner import FileScanner, myprint
@@ -368,12 +369,8 @@ class Database:
         def normalize_scanned_path(path: str) -> str:
             """Strip dap_root from scanned path for comparison."""
             if self.dap_root:
-                normalized = path.replace("\\", "/")
-                dap_root_norm = self.dap_root.replace("\\", "/").lower()
-                if normalized.lower().startswith(dap_root_norm):
-                    clean = normalized[len(self.dap_root):]
-                    if not clean.startswith("/"):
-                        clean = "/" + clean
+                clean = normalize_dap_path(path, dap_root=self.dap_root)
+                if clean is not None:
                     return clean.lower()
             return path.lower()
 
