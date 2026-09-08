@@ -13,6 +13,7 @@ import pytest
 from pathlib import Path
 from mutagen.mp3 import MP3
 from mutagen.id3 import ID3, TIT2, TPE1, TALB
+from tests.conftest import music_test_folder
 
 # Test environment paths
 TEST_ROOT = Path("./test_automation_env")
@@ -38,7 +39,7 @@ def test_env():
     artist_b_dir.mkdir(parents=True)
 
     # Use actual test files from music_test_folder if available, otherwise skip
-    source_music = Path("music_test_folder")
+    source_music = music_test_folder()
     if source_music.exists():
         # Copy a real MP3 file and modify its tags
         source_files = list(source_music.rglob("*.mp3"))
@@ -345,7 +346,7 @@ if __name__ == "__main__":
             artist_b_dir.mkdir(parents=True)
 
             # Use actual test files from music_test_folder if available
-            source_music = Path("music_test_folder")
+            source_music = music_test_folder()
             if not source_music.exists():
                 print(" Warning: music_test_folder not found - tests may not work")
                 sys.exit(1)

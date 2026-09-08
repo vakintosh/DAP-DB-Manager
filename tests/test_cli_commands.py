@@ -6,9 +6,10 @@ import json
 from pathlib import Path
 from unittest.mock import Mock, patch
 import argparse
+from tests.conftest import music_test_folder
 
 # Test data path
-TEST_DATA_DIR = Path("/Users/v/PYTHON_PROJECTS/rdbm/rockbox-db-manager/music_test_folder")
+TEST_DATA_DIR = music_test_folder()
 
 
 class TestCLIGenerateCommand:

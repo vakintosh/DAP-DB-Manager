@@ -7,6 +7,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 from dap_db_manager.database.file_scanner import FileScanner, myprint, read_single_file_tags
 from dap_db_manager.database.cache import TagCache
+from tests.conftest import music_test_folder
 
 
 class TestFileScannerBasics:
@@ -332,12 +333,12 @@ class TestFileScannerIntegration:
         TagCache.clear()
 
     @pytest.mark.skipif(
-        not Path("/Users/v/PYTHON_PROJECTS/rdbm/rockbox-db-manager/music_test_folder").exists(),
+        not music_test_folder().exists(),
         reason="Test data directory not available"
     )
     def test_scan_real_test_data(self):
         """Test scanning real test data directory."""
-        test_dir = "/Users/v/PYTHON_PROJECTS/rdbm/rockbox-db-manager/music_test_folder"
+        test_dir = str(music_test_folder())
         
         scanner = FileScanner()
         paths_set = set()
@@ -357,12 +358,12 @@ class TestFileScannerIntegration:
         # The test verifies the scanner handles real-world data
 
     @pytest.mark.skipif(
-        not Path("/Users/v/PYTHON_PROJECTS/rdbm/rockbox-db-manager/music_test_folder").exists(),
+        not music_test_folder().exists(),
         reason="Test data directory not available"
     )
     def test_corrupted_files_handling(self):
         """Test that scanner handles corrupted files gracefully."""
-        test_dir = "/Users/v/PYTHON_PROJECTS/rdbm/rockbox-db-manager/music_test_folder"
+        test_dir = str(music_test_folder())
         
         scanner = FileScanner()
         paths_set = set()

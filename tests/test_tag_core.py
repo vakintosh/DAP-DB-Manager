@@ -4,6 +4,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import Mock, MagicMock, patch
 from dap_db_manager.tagging.tag.core import Tag
+from tests.conftest import music_test_folder
 
 
 class TestTagInitialization:
@@ -140,12 +141,12 @@ class TestTagWithRealFiles:
     """Integration tests with real audio files (if available)."""
 
     @pytest.mark.skipif(
-        not Path("/Users/v/PYTHON_PROJECTS/rdbm/rockbox-db-manager/music_test_folder").exists(),
+        not music_test_folder().exists(),
         reason="Test data not available"
     )
     def test_tag_from_real_mp3(self):
         """Test creating Tag from a real MP3 file."""
-        test_dir = Path("/Users/v/PYTHON_PROJECTS/rdbm/rockbox-db-manager/music_test_folder")
+        test_dir = music_test_folder()
         
         # Find an MP3 file
         mp3_files = list(test_dir.rglob("*.mp3"))
@@ -165,12 +166,12 @@ class TestTagWithRealFiles:
                 pass
 
     @pytest.mark.skipif(
-        not Path("/Users/v/PYTHON_PROJECTS/rdbm/rockbox-db-manager/music_test_folder").exists(),
+        not music_test_folder().exists(),
         reason="Test data not available"
     )
     def test_tag_from_real_flac(self):
         """Test creating Tag from a real FLAC file."""
-        test_dir = Path("/Users/v/PYTHON_PROJECTS/rdbm/rockbox-db-manager/music_test_folder")
+        test_dir = music_test_folder()
         
         # Find a FLAC file
         flac_files = list(test_dir.rglob("*.flac"))
