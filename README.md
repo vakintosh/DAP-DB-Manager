@@ -13,6 +13,7 @@ Based on the original 2009 Python 2.x GUI implementation by **Mike Richards** an
 
 - **Fast database generation**: Multiprocessing bypasses Python GIL (4-15x faster).
 - **Cross-compilation**: Build database on laptop/server for your DAP (180x faster).
+- **Non-destructive rebuilds**: A full `generate` preserves the device's play counts, ratings and resume positions.
 - **Incremental updates**: Delta updates with rename detection preserve stats.
 - **Intelligent caching**: Persistent tag cache for speed.
 - **Full CLI suite**: Generate, validate, inspect, load, and copy databases.
@@ -29,9 +30,9 @@ Based on the original 2009 Python 2.x GUI implementation by **Mike Richards** an
 **Work in Progress** - Under active development
 
 **Tested on:**
-- ✅ macOS Sonoma 14.8.3 (Intel Mac)
-- ✅ maOS Tahoe 26.1 (Apple Silicon)
-- ✅ Ubuntu 24.04 LTS (Kernel 6.17.0, aarch64 / Raspberry Pi)
+- yes macOS Sonoma 14.8.3 (Intel Mac)
+- yes maOS Tahoe 26.1 (Apple Silicon)
+- yes Ubuntu 24.04 LTS (Kernel 6.17.0, aarch64 / Raspberry Pi)
 - 🔄 Windows (in progress)
 
 > **Note**: The generated database files were tested only on an **iPod Classic 7th Gen (2009)** running **Rockbox Ver. 37690baa5f-260101**.
@@ -89,6 +90,33 @@ The `ddm` tool is the core of the project.
 **Cross-Compilation**: Use `--dap-root` when running on a PC. It ensures paths in the database match what the Rockbox OS expects (e.g. `/<HDD0>/Music/...` instead of `/Path/To/Music/Folder/...`).
 
 **Update Command**: Use `ddm update` to add new files or handle renames without rebuilding the entire database. It preserves play counts and ratings.
+
+### Runtime statistics are preserved across rebuilds
+
+The device accumulates play counts, ratings, play time, last-played timestamps and
+resume positions as you listen. `generate` rebuilds from the music files, which carry
+none of that, so by default it now reads the database it is about to replace and carries
+those values onto the new entries, matched by path.
+
+This means a full rebuild is non-destructive: you get the speed of rebuilding on a PC
+without paying for it in lost listening history.
+
+Every run reports what happened, so a partial restore can never look like a complete one:
+
+```
+Preserved stats for 17,102 of 17,139 entries (37 new files, 12 old entries unmatched)
+```
+
+- `--no-preserve-stats` rebuilds without carrying anything over.
+- `--preserve-stats-from DIR` reads the statistics from a database in `DIR` instead of
+  the one in `--output`. It cannot be combined with `--no-preserve-stats`.
+
+Files that moved since the last rebuild are treated as new and start from zero. Use
+`ddm update`, which has rename detection, if you need statistics to follow a moved file.
+
+Note that `commitid` and `mtime` are deliberately not carried over. They describe the
+database and the file on disk rather than your listening, and preserving them would
+produce a database that misreports when it was built.
 
 > **Tip**: For detailed examples and advanced usage of each command, check out the [Examples](Examples/) folder.
 

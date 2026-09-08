@@ -155,6 +155,25 @@ def parse_args() -> tuple[argparse.ArgumentParser, argparse.Namespace]:
         help="Disable parallel processing (useful for debugging or small datasets)",
     )
     generate_options.add_argument(
+        "--no-preserve-stats",
+        action="store_true",
+        help=(
+            "Do not carry runtime statistics (playcount, rating, playtime, "
+            "lastplayed, resume position) over from the database being replaced. "
+            "By default they are preserved, so a full rebuild does not discard "
+            "the device's listening history."
+        ),
+    )
+    generate_options.add_argument(
+        "--preserve-stats-from",
+        type=Path,
+        metavar="DIR",
+        help=(
+            "Read runtime statistics from a database in DIR instead of the one "
+            "in --output. Cannot be combined with --no-preserve-stats."
+        ),
+    )
+    generate_options.add_argument(
         "--workers",
         type=int,
         metavar="N",

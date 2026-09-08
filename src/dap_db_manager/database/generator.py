@@ -284,6 +284,7 @@ class DatabaseGenerator:
         max_workers: Optional[int] = None,
         dap_root: Optional[str] = None,
         mount_notation: Optional[str] = None,
+        stats_preserver: Optional[Any] = None,
     ):
         """Initialize the database generator.
 
@@ -304,6 +305,9 @@ class DatabaseGenerator:
         self.max_workers = max_workers
         self.dap_root = self._normalize_dap_root(dap_root)
         self.mount_notation = mount_notation.rstrip("/") if mount_notation else None
+        # Optional StatsPreserver; when set, runtime stats from the database
+        # being replaced are carried onto the new entries.
+        self.stats_preserver = stats_preserver
         self._lock = Lock()
 
         # Persistent pool - reused across operations for better performance
@@ -582,6 +586,11 @@ class DatabaseGenerator:
         # Embedded fields
         for field, value in result["embedded"].items():
             entry[field] = value
+
+        # Runtime stats carried over from the database being replaced. Applied
+        # after the embedded fields so a stale zero cannot clobber a real value.
+        if self.stats_preserver is not None:
+            self.stats_preserver.apply(result["path"], entry)
 
         # Formatted fields
         multiple_tags_entries = {}
