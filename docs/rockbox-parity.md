@@ -11,7 +11,7 @@ a PC-side generator cannot and should not implement. Device-only functions are l
 as explicit **N/A rows with a reason** rather than omitted, so the matrix is provably
 complete and can be re-diffed against a future upstream pull.
 
-Legend: ✅ implemented · ⚠️ partial / divergent · ❌ missing · ⊘ N/A (device-only)
+Legend: **yes** implemented · **partial** divergent · **no** missing · **n/a** device-only
 
 ---
 
@@ -21,15 +21,15 @@ Unchanged since header v16; upstream has not altered the binary layout.
 
 | Item | Rockbox | ddm | Status |
 |---|---|---|---|
-| `TAGCACHE_MAGIC` | `0x54434810` (v16) | `MAGIC = 1413695504` (`constants.py:58`) | ✅ |
-| `enum tag_type` order (23 tags) | `artist … tag_lastoffset` | `constants.py:7–46`, same order | ✅ |
-| `struct index_entry` | `tag_seek[TAG_COUNT]` + `flag` = 24 × int32 | `IndexEntry.size = 4*24` | ✅ |
-| `struct master_header` | magic, datasize, entry_count, serial, commitid, dirty | `header_size = 6*4`; fields at `indexfile.py:24–26,103–105` | ✅ |
-| Flag bits | DELETED / DIRCACHE / DIRTYNUM / TRKNUMGEN / RESURRECTED | all five, `constants.py:48–52` | ✅ |
-| `tag_virt_canonicalartist` → `database_12.tcd` | yes | yes (`constants.py:16`) | ✅ |
-| `<Untagged>` literal | yes | `generator.py:81,134,161,199,236,592` | ✅ |
-| `FLAG_TRKNUMGEN` on generated track numbers | yes | `generator.py:602` | ✅ |
-| `serial` / `commitid` / `dirty` maintenance | yes | `indexfile.py:95–96` (commitid++, dirty=0) | ✅ |
+| `TAGCACHE_MAGIC` | `0x54434810` (v16) | `MAGIC = 1413695504` (`constants.py:58`) | yes |
+| `enum tag_type` order (23 tags) | `artist … tag_lastoffset` | `constants.py:7–46`, same order | yes |
+| `struct index_entry` | `tag_seek[TAG_COUNT]` + `flag` = 24 × int32 | `IndexEntry.size = 4*24` | yes |
+| `struct master_header` | magic, datasize, entry_count, serial, commitid, dirty | `header_size = 6*4`; fields at `indexfile.py:24–26,103–105` | yes |
+| Flag bits | DELETED / DIRCACHE / DIRTYNUM / TRKNUMGEN / RESURRECTED | all five, `constants.py:48–52` | yes |
+| `tag_virt_canonicalartist` → `database_12.tcd` | yes | yes (`constants.py:16`) | yes |
+| `<Untagged>` literal | yes | `generator.py:81,134,161,199,236,592` | yes |
+| `FLAG_TRKNUMGEN` on generated track numbers | yes | `generator.py:602` | yes |
+| `serial` / `commitid` / `dirty` maintenance | yes | `indexfile.py:95–96` (commitid++, dirty=0) | yes |
 
 **Conclusion:** binary compatibility is complete. Nothing stale here.
 
@@ -43,18 +43,18 @@ Every non-static declaration in the header, in file order.
 
 | Symbol | ddm equivalent | Status |
 |---|---|---|
-| `do_tagcache_build()` | `ddm generate` → `DatabaseGenerator` + `DatabaseIO` | ✅ |
-| `tagcache_reverse_scan()` | folded into `generate` (PCTOOL-only upstream too) | ✅ |
-| `tagcache_update()` | `ddm update` + `rename_detector.py` (stat preservation) | ✅ |
-| `tagcache_rebuild()` | no separate command; `generate` wipes + rebuilds | ✅ (functionally) |
-| `tagcache_tag_to_str()` | `constants.py` tag list / index mapping | ✅ |
+| `do_tagcache_build()` | `ddm generate` → `DatabaseGenerator` + `DatabaseIO` | yes |
+| `tagcache_reverse_scan()` | folded into `generate` (PCTOOL-only upstream too) | yes |
+| `tagcache_update()` | `ddm update` + `rename_detector.py` (stat preservation) | yes |
+| `tagcache_rebuild()` | no separate command; `generate` wipes + rebuilds | yes (functionally) |
+| `tagcache_tag_to_str()` | `constants.py` tag list / index mapping | yes |
 
 ### 2.2 Changelog — **the one real gap**
 
 | Symbol | ddm equivalent | Status |
 |---|---|---|
-| `tagcache_create_changelog()` (`tagcache.c:3985`) | none | ❌ **missing** |
-| `tagcache_import_changelog()` (`tagcache.c:3932`) | none | ❌ missing (but see note) |
+| `tagcache_create_changelog()` (`tagcache.c:3985`) | none | no **missing** |
+| `tagcache_import_changelog()` (`tagcache.c:3932`) | none | no missing (but see note) |
 
 Verified by grep: **zero occurrences of "changelog" anywhere in `src/`.**
 
@@ -88,19 +88,19 @@ Import keys off `filename=`, resolves via `find_index()`, and imports only
 ### 2.3 Search engine — N/A (device-only)
 
 Runtime query layer for on-device browsing. A generator writes the DB; it never
-serves queries against it. All ⊘.
+serves queries against it. All n/a.
 
 | Symbol | Reason |
 |---|---|
-| `tagcache_search()` | ⊘ on-device browse-time query |
-| `tagcache_search_add_filter()` | ⊘ ditto |
-| `tagcache_search_add_clause()` | ⊘ full `enum clause` set (is/is_not/gt/lt/contains/begins_with/ends_with/*_oneof/logical_or) |
-| `tagcache_check_clauses()` | ⊘ ditto |
-| `tagcache_search_set_uniqbuf()` | ⊘ dedup buffer for browse results |
-| `tagcache_get_next()` / `tagcache_retrieve()` | ⊘ result iteration |
-| `tagcache_get_numeric()` | ⊘ result accessor |
-| `tagcache_search_finish()` | ⊘ result teardown |
-| `tagcache_find_index()` | ⊘ *(but see Gap 3 below — the import path needs an equivalent)* |
+| `tagcache_search()` | n/a on-device browse-time query |
+| `tagcache_search_add_filter()` | n/a ditto |
+| `tagcache_search_add_clause()` | n/a full `enum clause` set (is/is_not/gt/lt/contains/begins_with/ends_with/*_oneof/logical_or) |
+| `tagcache_check_clauses()` | n/a ditto |
+| `tagcache_search_set_uniqbuf()` | n/a dedup buffer for browse results |
+| `tagcache_get_next()` / `tagcache_retrieve()` | n/a result iteration |
+| `tagcache_get_numeric()` | n/a result accessor |
+| `tagcache_search_finish()` | n/a result teardown |
+| `tagcache_find_index()` | n/a *(but see Gap 3 below — the import path needs an equivalent)* |
 
 ### 2.4 Runtime numeric edits — N/A (device-only)
 
@@ -109,40 +109,40 @@ generation time instead.
 
 | Symbol | Reason |
 |---|---|
-| `tagcache_update_numeric()` | ⊘ playback-time stat write |
-| `tagcache_modify_numeric_entry()` | ⊘ ditto |
-| `tagcache_increase_serial()` | ⊘ serial bump on device edit (ddm sets serial at build) |
+| `tagcache_update_numeric()` | n/a playback-time stat write |
+| `tagcache_modify_numeric_entry()` | n/a ditto |
+| `tagcache_increase_serial()` | n/a serial bump on device edit (ddm sets serial at build) |
 
 ### 2.5 Lifecycle / init / commit — N/A (firmware lifecycle)
 
 | Symbol | Reason |
 |---|---|
-| `tagcache_init()` / `is_initialized()` / `is_fully_initialized()` / `is_usable()` | ⊘ firmware boot lifecycle |
-| `tagcache_start_scan()` / `stop_scan()` | ⊘ background scan thread |
-| `tagcache_commit_finalize()` | ⊘ multi-step on-device commit; ddm writes atomically |
-| `tagcache_get_stat()` / `get_commit_step()` / `get_max_commit_step()` | ⊘ on-device progress UI |
-| `tagcache_prepare_shutdown()` / `shutdown()` | ⊘ safe-poweroff hooks |
-| `tagcache_remove_statefile()` | ⊘ `database_state.tcd` is device-managed |
-| `tagcache_screensync_event()` / `screensync_enable()` | ⊘ on-device UI redraw |
+| `tagcache_init()` / `is_initialized()` / `is_fully_initialized()` / `is_usable()` | n/a firmware boot lifecycle |
+| `tagcache_start_scan()` / `stop_scan()` | n/a background scan thread |
+| `tagcache_commit_finalize()` | n/a multi-step on-device commit; ddm writes atomically |
+| `tagcache_get_stat()` / `get_commit_step()` / `get_max_commit_step()` | n/a on-device progress UI |
+| `tagcache_prepare_shutdown()` / `shutdown()` | n/a safe-poweroff hooks |
+| `tagcache_remove_statefile()` | n/a `database_state.tcd` is device-managed |
+| `tagcache_screensync_event()` / `screensync_enable()` | n/a on-device UI redraw |
 
 ### 2.6 RAM cache — N/A (`HAVE_TC_RAMCACHE`)
 
 | Symbol | Reason |
 |---|---|
-| `tagcache_is_in_ram()` | ⊘ in-memory DB copy, device only |
-| `tagcache_fill_tags()` | ⊘ populates `struct mp3entry` from ramcache at playback |
-| `tagcache_unload_ramcache()` | ⊘ ditto |
+| `tagcache_is_in_ram()` | n/a in-memory DB copy, device only |
+| `tagcache_fill_tags()` | n/a populates `struct mp3entry` from ramcache at playback |
+| `tagcache_unload_ramcache()` | n/a ditto |
 
 ### 2.7 `tagtree.c` — N/A
 
 The browser layer (`.tcnav` / tagnavi menu tree, virtual tags, browse formatting).
-Entirely on-device UI. ⊘
+Entirely on-device UI. n/a
 
 ### 2.8 Virtual tags — correctly not stored
 
 `tag_virt_basename`, `_length_min`, `_length_sec`, `_playtime_min`, `_playtime_sec`,
 `_entryage`, `_autoscore` are index ≥ `TAG_COUNT` and computed at browse time.
-ddm correctly does not persist them. ✅ (by omission)
+ddm correctly does not persist them. yes (by omission)
 
 ---
 
@@ -184,7 +184,7 @@ generated `database_8.tcd`.
 `supported_extensions` (`file_scanner.py:117`) covers ~17 mutagen-taggable formats.
 Rockbox additionally indexes chiptune/tracker formats (SID, MOD, SPC, NSF), AC3/A52,
 and raw AAC-ADTS. mutagen has no taggers for most. Irrelevant to the current library;
-recorded for completeness. Would require hand-written parsers. ⚠️ won't-fix
+recorded for completeness. Would require hand-written parsers. partial won't-fix
 
 ---
 
@@ -256,11 +256,11 @@ scanned **17,139 files with 0 failed**.
 
 | Category | Count | Notes |
 |---|---|---|
-| ✅ Implemented | 5 API + 9 format items | build/update/rebuild core + full binary layout |
-| ❌ Missing | 2 | `create_changelog` (in scope), `import_changelog` (device-side upstream) |
-| ⚠️ Divergent | 1 | exotic codecs (won't-fix) |
-| ✅ Fixed this pass | 3 | `grouping` on MP4/ASF, default `grouping` mapping, AppleDouble filtering (divergence) |
-| ⊘ N/A (device-only) | 27 | search ×9, numeric edits ×3, lifecycle ×12, ramcache ×3, `tagtree.c` |
+| yes Implemented | 5 API + 9 format items | build/update/rebuild core + full binary layout |
+| no Missing | 2 | `create_changelog` (in scope), `import_changelog` (device-side upstream) |
+| partial Divergent | 1 | exotic codecs (won't-fix) |
+| yes Fixed this pass | 3 | `grouping` on MP4/ASF, default `grouping` mapping, AppleDouble filtering (divergence) |
+| n/a N/A (device-only) | 27 | search ×9, numeric edits ×3, lifecycle ×12, ramcache ×3, `tagtree.c` |
 
 ## 6. End-to-End Verification (2026-09-07)
 
@@ -280,10 +280,10 @@ ddm generate --music-dir <volume>/Music \
 | Wall time | 58.8 s |
 | Files written | 11 (`database_{0,1,2,3,4,5,6,7,8,12}.tcd` + `database_idx.tcd`) |
 | `ddm validate` | **Passed** — all files present, loads, no orphaned references |
-| Master header magic | `1048 4354` LE = `0x54434810` ✅ |
-| `entry_count` | `0x42F3` = 17,139 ✅ |
-| Path cross-compilation | `/<HDD0>/Music/…`; **0** paths retaining the host mount prefix ✅ |
-| `grouping` (tag 8) | 3,107 entries incl. values read from native `©grp` ✅ |
+| Master header magic | `1048 4354` LE = `0x54434810` yes |
+| `entry_count` | `0x42F3` = 17,139 yes |
+| Path cross-compilation | `/<HDD0>/Music/…`; **0** paths retaining the host mount prefix yes |
+| `grouping` (tag 8) | 3,107 entries incl. values read from native `©grp` yes |
 | Test suite | 542 passed, 23 skipped, 0 correctness failures |
 
 The 2 remaining failures are in `test_performance_regression.py` — machine-dependent
@@ -304,6 +304,18 @@ functionally valid. It does mean `.tcd` output cannot be checksum-compared betwe
 to detect drift, which is worth knowing before anyone builds a "has the DB changed?"
 check on hashes. Not filed as a defect; recorded so the next audit doesn't mistake it
 for one.
+
+### Divergence: runtime stats preserved across rebuild (0.9.0)
+
+`generate` now reads the database it is replacing and carries the six runtime stat tags
+onto the new entries. Rockbox has no equivalent, because on-device the database is
+rebuilt in place and the stats never leave.
+
+This is the practical answer to the same problem `database_changelog.txt` exists to
+solve, and it is strictly better for a host-side generator: the changelog only contains
+entries flagged `FLAG_DIRTYNUM`, so it is partial by construction, whereas reading the
+old database yields every entry. See
+`docs/superpowers/specs/2026-09-08-preserve-stats-design.md`.
 
 **Bottom line:** the on-disk format is at exact parity and the generation pipeline
 covers everything upstream's PCTOOL build does, with one exception —
