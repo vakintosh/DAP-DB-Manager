@@ -1,6 +1,6 @@
 # Make `--workers`/`--no-parallel` Actually Work, and Expose It on `update`
 
-**Status:** proposed (spike -- not yet implemented, no code written)
+**Status:** implemented in code (pending physical device validation)
 **Date:** 2026-10-02
 **Issues:** [#27](https://github.com/vakintosh/DAP-DB-Manager/issues/27) (`update` has no worker override), [#28](https://github.com/vakintosh/DAP-DB-Manager/issues/28) (`--workers` is a no-op for `generate`)
 **Related specs:** `docs/superpowers/specs/2026-09-08-preserve-stats-design.md` (same house style)

@@ -353,6 +353,17 @@ def parse_args() -> tuple[argparse.ArgumentParser, argparse.Namespace]:
         help="Output directory (default: update database in place)",
     )
     update_options.add_argument(
+        "--no-parallel",
+        action="store_true",
+        help="Disable parallel processing (useful for debugging or small datasets)",
+    )
+    update_options.add_argument(
+        "--workers",
+        type=int,
+        metavar="N",
+        help="Number of worker threads for parallel processing (default: auto-calculated as CPU count + 4, max 32)",
+    )
+    update_options.add_argument(
         "--dap-root",
         type=Path,
         metavar="PATH",
