@@ -64,6 +64,7 @@ class DatabaseIO:
             max_workers: Maximum number of parallel write operations (default: 4)
         """
         out_path = Path(out_dir) if out_dir else Path.cwd()
+        out_path.mkdir(parents=True, exist_ok=True)
 
         if use_parallel:
             cls._write_parallel(tagfiles, index, out_path, callback, max_workers)

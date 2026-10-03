@@ -265,6 +265,7 @@ def cmd_update(args: argparse.Namespace) -> None:
 
     # Write updated database
     if output_path != db_path or args.output:
+        output_path.mkdir(parents=True, exist_ok=True)
         console.print(f"\n[cyan]Writing updated database to:[/cyan] {output_path}")
         try:
             callback = (

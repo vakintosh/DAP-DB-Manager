@@ -1,8 +1,6 @@
 """Tests for database I/O operations - Fixed API."""
 
 import pytest
-import tempfile
-from pathlib import Path
 from dap_db_manager.database.io import DatabaseIO
 from dap_db_manager.indexfile import IndexFile
 from dap_db_manager.tagging.tag.tagfile import TagFile
@@ -17,10 +15,10 @@ class TestDatabaseIOWrite:
         # Create tagfiles and index
         tagfiles = {tag: TagFile() for tag in FILE_TAGS}
         index = IndexFile()
-        
+
         # Write using class method
         DatabaseIO.write(tagfiles, index, str(tmp_path))
-        
+
         # Should create database files
         assert (tmp_path / "database_idx.tcd").exists()
 
@@ -28,7 +26,7 @@ class TestDatabaseIOWrite:
         """Test parallel writing."""
         tagfiles = {tag: TagFile() for tag in FILE_TAGS}
         index = IndexFile()
-        
+
         DatabaseIO.write(tagfiles, index, str(tmp_path), use_parallel=True)
         assert (tmp_path / "database_idx.tcd").exists()
 
@@ -36,9 +34,19 @@ class TestDatabaseIOWrite:
         """Test sequential writing."""
         tagfiles = {tag: TagFile() for tag in FILE_TAGS}
         index = IndexFile()
-        
+
         DatabaseIO.write(tagfiles, index, str(tmp_path), use_parallel=False)
         assert (tmp_path / "database_idx.tcd").exists()
+
+    def test_write_creates_missing_directory(self, tmp_path):
+        """Test writing database creates the target directory if missing."""
+        tagfiles = {tag: TagFile() for tag in FILE_TAGS}
+        index = IndexFile()
+        target = tmp_path / "new_subdir" / "target_db"
+        assert not target.exists()
+
+        DatabaseIO.write(tagfiles, index, str(target), use_parallel=True)
+        assert (target / "database_idx.tcd").exists()
 
 
 class TestDatabaseIORead:
@@ -50,10 +58,10 @@ class TestDatabaseIORead:
         tagfiles = {tag: TagFile() for tag in FILE_TAGS}
         index = IndexFile()
         DatabaseIO.write(tagfiles, index, str(tmp_path))
-        
+
         # Now read it back
         loaded_tagfiles, loaded_index = DatabaseIO.read(str(tmp_path))
-        
+
         assert loaded_tagfiles is not None
         assert loaded_index is not None
         assert isinstance(loaded_tagfiles, dict)
@@ -72,13 +80,13 @@ class TestDatabaseIORoundTrip:
         # Create database
         original_tagfiles = {tag: TagFile() for tag in FILE_TAGS}
         original_index = IndexFile()
-        
+
         # Write
         DatabaseIO.write(original_tagfiles, original_index, str(tmp_path))
-        
+
         # Read back
         loaded_tagfiles, loaded_index = DatabaseIO.read(str(tmp_path))
-        
+
         # Verify structure
         assert set(loaded_tagfiles.keys()) == set(original_tagfiles.keys())
 
@@ -90,13 +98,14 @@ class TestDatabaseIOCallbacks:
         """Test write with callback function."""
         tagfiles = {tag: TagFile() for tag in FILE_TAGS}
         index = IndexFile()
-        
+
         callback_calls = []
+
         def test_callback(*args, **kwargs):
             callback_calls.append((args, kwargs))
-        
+
         DatabaseIO.write(tagfiles, index, str(tmp_path), callback=test_callback)
-        
+
         # Should have invoked callback
         assert len(callback_calls) > 0
 
@@ -108,6 +117,6 @@ class TestDatabaseIOOptimizations:
         """Test write_optimized method."""
         tagfiles = {tag: TagFile() for tag in FILE_TAGS}
         index = IndexFile()
-        
+
         DatabaseIO.write_optimized(tagfiles, index, str(tmp_path))
         assert (tmp_path / "database_idx.tcd").exists()
