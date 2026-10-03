@@ -53,6 +53,19 @@ The update command automatically detects renamed files to preserve their statist
    ✓ 1 file(s) were renamed/moved. Statistics (playcount, ratings, etc.) have been preserved.
    ```
 
+### Handling In-Place Edits (Modified Files)
+
+Retagging a file without renaming it (e.g. fixing a typo in the title with a tag
+editor) is the most common kind of change. `update` detects this by comparing
+each file's on-disk modification time against what's stored in the database --
+same logic Rockbox's own `tagcache_update` uses. The file's tags are re-read
+and its runtime statistics (playcount, rating, etc.) are carried onto the
+refreshed entry, matched on the exact file path.
+
+```
+✓ 1 file(s) were modified in place (tags changed, same path). Statistics (playcount, ratings, etc.) have been preserved.
+```
+
 ### JSON Output
 
 ```bash
@@ -69,6 +82,7 @@ ddm update --db-dir .rockbox --music-dir ~/Music --dap-root /Users/user --json
   "final_entries": 1005,
   "added": 5,
   "renamed": 0,
+  "modified": 0,
   "deleted": 0,
   "unchanged": 1000,
   "duration_ms": 500

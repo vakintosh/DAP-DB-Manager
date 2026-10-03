@@ -28,6 +28,8 @@ def cmd_update(args: argparse.Namespace) -> None:
     This command performs an incremental update that:
     - Scans for new files not in the database
     - Detects renamed/moved files to preserve statistics
+    - Detects files retagged in place (same path, changed mtime) and re-reads
+      their tags, preserving statistics
     - Marks missing files as deleted (preserves statistics)
     - Is faster than full rebuild
     - Preserves playcount, rating, lastplayed, and other stats
@@ -284,6 +286,7 @@ def cmd_update(args: argparse.Namespace) -> None:
     # Prepare summary
     added = stats.get("added", 0)
     renamed = stats.get("renamed", 0)
+    modified = stats.get("modified", 0)
     deleted = stats.get("deleted", 0)
     unchanged = stats.get("unchanged", 0)
     failed = stats.get("failed", 0)
@@ -303,6 +306,7 @@ def cmd_update(args: argparse.Namespace) -> None:
                 deleted_entries=final_deleted,
                 added=added,
                 renamed=renamed,
+                modified=modified,
                 deleted=deleted,
                 unchanged=unchanged,
                 failed=failed,
@@ -330,6 +334,8 @@ def cmd_update(args: argparse.Namespace) -> None:
     table.add_row("Added", f"{added:,}", style="green")
     if renamed > 0:
         table.add_row("Renamed/Moved", f"{renamed:,}", style="cyan")
+    if modified > 0:
+        table.add_row("Modified (re-tagged)", f"{modified:,}", style="cyan")
     table.add_row("Newly Deleted", f"{deleted:,}", style="yellow")
     table.add_row("Unchanged", f"{unchanged:,}")
     if failed > 0:
@@ -343,6 +349,14 @@ def cmd_update(args: argparse.Namespace) -> None:
         console.print(
             f"[cyan]✓[/cyan] {renamed} file(s) were renamed/moved. "
             "Statistics (playcount, ratings, etc.) have been preserved."
+        )
+        console.print()
+
+    if modified > 0:
+        console.print(
+            f"[cyan]✓[/cyan] {modified} file(s) were modified in place (tags "
+            "changed, same path). Statistics (playcount, ratings, etc.) have "
+            "been preserved."
         )
         console.print()
 

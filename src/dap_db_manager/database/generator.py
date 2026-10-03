@@ -19,7 +19,7 @@ except ImportError:
     titleformat = None  # type: ignore[assignment]
 
 from ..constants import FILE_TAGS, EMBEDDED_TAGS, FLAG_TRKNUMGEN
-from ..utils import mtime_to_fat, normalize_dap_path
+from ..utils import normalize_dap_path
 from ..tagging.tag.tagfile import TagEntry
 from ..indexfile import IndexEntry
 from .cache import TagCache
@@ -576,7 +576,17 @@ class DatabaseGenerator:
         tagfiles["title"].append_sorted(entry.title)
 
         # Metadata
-        entry.mtime = mtime_to_fat(result["mtime"])
+        # Store the raw (unix-like) mtime in memory, matching the invariant
+        # `IndexEntry.to_file`/`from_file` already rely on: FAT encoding only
+        # happens at the (de)serialization boundary. Encoding to FAT here too
+        # double-encoded every freshly generated entry's mtime -- `to_file`
+        # would FAT-encode an already-FAT-encoded integer -- corrupting the
+        # stored mtime for every entry written straight from `generate`
+        # (anything not first round-tripped through `Database.read`). That
+        # silently broke every mtime-based comparison downstream: rename
+        # detection's exact-metadata-match strategy and `update`'s modified-
+        # file detection both read back garbage.
+        entry.mtime = result["mtime"]
         entry.length = result["length"]
         entry.flag = 0
         entry.tracknumber = result["tracknumber"]
