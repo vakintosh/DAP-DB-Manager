@@ -5,6 +5,7 @@ import logging
 import sys
 import time
 from pathlib import Path
+from typing import Any
 
 from rich.progress import (
     Progress,
@@ -147,7 +148,7 @@ def cmd_update(args: argparse.Namespace) -> None:
 
     # Auto-detect mount notation on first run if not configured
     if not config.is_mount_notation_configured():
-        device_path = dap_root if dap_root else db_path
+        device_path = dap_root if dap_root else str(db_path)
         if not use_json:
             console.print(
                 "[cyan]First run detected - auto-detecting mount notation...[/cyan]"
@@ -158,6 +159,12 @@ def cmd_update(args: argparse.Namespace) -> None:
         if not use_json:
             console.print()
 
+    workers = getattr(args, "workers", None)
+    if workers:
+        logging.info("Using %s worker threads", workers)
+
+    no_parallel = getattr(args, "no_parallel", False)
+
     # Load existing database
     console.print(f"\n[cyan]Loading existing database from:[/cyan] {db_path}")
     try:
@@ -166,7 +173,12 @@ def cmd_update(args: argparse.Namespace) -> None:
             if logging.getLogger().level <= logging.INFO
             else lambda msg, **kwargs: None
         )
-        db = Database.read(str(db_path), callback=callback, dap_root=dap_root)
+        db = Database.read(
+            str(db_path),
+            callback=callback,
+            dap_root=dap_root,
+            max_workers=workers,
+        )
         # Update config reference to use the one with auto-detected mount
         db.config = config
     except Exception as e:
@@ -179,6 +191,10 @@ def cmd_update(args: argparse.Namespace) -> None:
             )
         logging.error("Failed to load database: %s", e)
         sys.exit(ExitCode.DATA_ERROR)
+
+    if no_parallel:
+        db.use_parallel = False
+        logging.info("Parallel processing disabled")
 
     original_count = db.index.count
     console.print(f"[green]✓[/green] Loaded database with {original_count:,} entries\n")
@@ -193,6 +209,10 @@ def cmd_update(args: argparse.Namespace) -> None:
 
     # Update database
     console.print(f"[cyan]Updating database from:[/cyan] {music_path}\n")
+
+    update_kwargs: dict[str, Any] = {}
+    if no_parallel:
+        update_kwargs["parallel"] = False
 
     try:
         if not use_json:
@@ -222,10 +242,14 @@ def cmd_update(args: argparse.Namespace) -> None:
                             # Single int with total already set - advance
                             progress.advance(task, 1)
 
-                stats = db.update_database(str(music_path), callback=update_callback)
+                stats = db.update_database(
+                    str(music_path), callback=update_callback, **update_kwargs
+                )
         else:
             stats = db.update_database(
-                str(music_path), callback=lambda *args, **kwargs: None
+                str(music_path),
+                callback=lambda *args, **kwargs: None,
+                **update_kwargs,
             )
     except Exception as e:
         if use_json:

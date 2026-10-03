@@ -135,7 +135,9 @@ def cmd_generate(args: argparse.Namespace) -> None:
 
     stats_preserver = None
     if not no_preserve:
-        stats_dir = str(Path(preserve_from).resolve()) if preserve_from else str(output_path)
+        stats_dir = (
+            str(Path(preserve_from).resolve()) if preserve_from else str(output_path)
+        )
         existing_stats = read_existing_stats(stats_dir, dap_root=dap_root)
         if existing_stats:
             stats_preserver = StatsPreserver(existing_stats)
@@ -153,8 +155,15 @@ def cmd_generate(args: argparse.Namespace) -> None:
                 stats_dir,
             )
 
+    workers = getattr(args, "workers", None)
+
     # Create database instance
-    db = Database(config=config, dap_root=dap_root, stats_preserver=stats_preserver)
+    db = Database(
+        config=config,
+        dap_root=dap_root,
+        stats_preserver=stats_preserver,
+        max_workers=workers,
+    )
 
     # Log mount notation
     mount_notation = db.config.get_mount_notation()
@@ -171,9 +180,9 @@ def cmd_generate(args: argparse.Namespace) -> None:
         db.use_parallel = False
         logging.info("Parallel processing disabled")
 
-    if hasattr(args, "workers") and args.workers:
-        db.max_workers = args.workers
-        logging.info("Using %s worker threads", args.workers)
+    if workers:
+        db.max_workers = workers
+        logging.info("Using %s worker threads", workers)
 
     # Load configuration if provided
     if args.config:
@@ -291,7 +300,6 @@ def cmd_generate(args: argparse.Namespace) -> None:
     console.print(
         f"\n[green]✓[/green] Scanned {total_files} files ({failed_files} failed)"
     )
-
 
     if failed_files > 0:
         logging.warning("Failed to read %s files:", failed_files)

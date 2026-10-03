@@ -25,3 +25,7 @@ rockbox_source
 test_automation_env
 # Virtual environments
 .venv
+
+# Local planning and spec artifacts
+.superpowers/
+docs/superpowers/

@@ -60,6 +60,7 @@ class Database:
         config: Optional[Config] = None,
         dap_root: Optional[str] = None,
         stats_preserver=None,
+        max_workers: Optional[int] = None,
     ):
         """Initialize a new Database instance.
 
@@ -69,6 +70,8 @@ class Database:
                       When set, paths are translated from laptop paths to DAP-relative paths.
                       Example: dap_root="/Volumes/DAP" converts "/Volumes/DAP/Music/Song.mp3"
                       to "/Music/Song.mp3" in the database.
+            stats_preserver: Optional StatsPreserver instance for preserving stats.
+            max_workers: Optional maximum number of worker threads/processes.
         """
         # Load or use provided config
         self.config = config if config is not None else Config()
@@ -98,15 +101,17 @@ class Database:
         # Auto-detect optimal worker count based on CPU count (I/O-bound workload)
         # Formula: min(32, cpu_count + 4) allows for efficient I/O concurrency
         cpu_count = multiprocessing.cpu_count()
-        self.max_workers = min(32, cpu_count + 4)
+        self.max_workers = (
+            max_workers if max_workers is not None else min(32, cpu_count + 4)
+        )
         self.use_parallel = True  # Can be toggled via parameters
 
         # Initialize scanner and generator with configured workers
         # Get mount notation from config for path formatting (used only in generator)
         mount_notation = self.config.get_mount_notation() if self.config else None
-        
+
         self._scanner = FileScanner(max_workers=self.max_workers)
-        
+
         self._generator = DatabaseGenerator(
             max_workers=self.max_workers,
             dap_root=dap_root,
@@ -373,9 +378,9 @@ class Database:
             if self.config:
                 mount_notation = self.config.get_mount_notation()
                 if mount_notation and path.startswith(mount_notation + "/"):
-                    return path[len(mount_notation):].lower()
+                    return path[len(mount_notation) :].lower()
             return path.lower()
-        
+
         # Helper to normalize scanned paths for comparison (strip dap_root)
         def normalize_scanned_path(path: str) -> str:
             """Strip dap_root from scanned path for comparison."""
@@ -396,7 +401,7 @@ class Database:
 
         # Determine which files to add (not in database)
         paths_to_add = new_paths - existing_paths
-        
+
         # Determine which files to mark as deleted (in database but not on disk)
         paths_to_delete = existing_paths - new_paths
 
@@ -560,7 +565,9 @@ class Database:
             # Filter paths to only include new files
             # Must use normalized paths for comparison (same normalization as paths_to_add)
             original_paths = self.paths.copy()
-            self.paths = {p for p in original_paths if normalize_scanned_path(p) in paths_to_add}
+            self.paths = {
+                p for p in original_paths if normalize_scanned_path(p) in paths_to_add
+            }
 
             # Generate database entries for new files only
             # This preserves existing entries and their indices
@@ -644,7 +651,10 @@ class Database:
 
     @staticmethod
     def read(
-        in_dir: str = "", callback: Callable = myprint, dap_root: Optional[str] = None
+        in_dir: str = "",
+        callback: Callable = myprint,
+        dap_root: Optional[str] = None,
+        max_workers: Optional[int] = None,
     ):
         """Read the database from a directory and return a Database object.
 
@@ -656,11 +666,12 @@ class Database:
             in_dir: Input directory path
             callback: Progress callback function
             dap_root: Optional DAP mount point for cross-compilation updates
+            max_workers: Optional worker count for parallel processing
 
         Returns:
             Database object with loaded data
         """
-        db = Database(dap_root=dap_root)
+        db = Database(dap_root=dap_root, max_workers=max_workers)
         db.tagfiles, db.index = DatabaseIO.read(in_dir, callback)
         return db
 
