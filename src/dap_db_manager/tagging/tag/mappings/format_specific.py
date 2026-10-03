@@ -117,7 +117,7 @@ def setup_format_specific_mappings():
             try:
                 vals = list(str(tags[key]).partition(sep))
                 vals[index] = value
-                
+
                 # If separator existed, keep it
                 if vals[1]:
                     tags[key] = vals[0] + vals[1] + vals[2]

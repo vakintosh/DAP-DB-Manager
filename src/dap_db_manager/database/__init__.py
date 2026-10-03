@@ -357,20 +357,14 @@ class Database:
         """
         use_parallel = parallel if parallel is not None else self.use_parallel
 
-        # Scan for all current files in music directory
+        # Phase 1: Fast directory scan collecting paths, sizes, and mtimes (no tag reading)
         callback("Scanning music directory...")
-        self._scanner.add_dir(
+        disk_metadata = self._scanner.scan_dir_metadata(
             music_dir,
-            paths_set=self.paths,
-            failed_list=self.failed,
             recursive=True,
-            use_parallel=use_parallel,
-            # Don't show per-directory callbacks during scan - too verbose and no total count
             dircallback=None,
         )
-        callback(
-            f"Scan complete: found {len(self.paths)} files ({len(self.failed)} failed)"
-        )
+        callback(f"Scan complete: found {len(disk_metadata)} files")
 
         # Helper to normalize database paths for comparison (strip mount notation)
         def normalize_db_path(path: str) -> str:
@@ -390,14 +384,20 @@ class Database:
                     return clean.lower()
             return path.lower()
 
+        # Map normalized scanned path -> real on-disk absolute path
+        scanned_norm_to_real = {normalize_scanned_path(p): p for p in disk_metadata}
+
         # Build set of existing database paths (normalized: without mount notation)
         existing_paths = set()
+        entries_by_norm_path = {}
         for entry in self.index.entries:
             if not entry.is_deleted():
-                existing_paths.add(normalize_db_path(entry["path"].data))
+                norm_p = normalize_db_path(entry["path"].data)
+                existing_paths.add(norm_p)
+                entries_by_norm_path[norm_p] = entry
 
         # Build set of scanned paths (normalized: without dap_root)
-        new_paths = {normalize_scanned_path(p) for p in self.paths}
+        new_paths = set(scanned_norm_to_real.keys())
 
         # Determine which files to add (not in database)
         paths_to_add = new_paths - existing_paths
@@ -415,7 +415,7 @@ class Database:
             "modified": 0,
             "deleted": 0,
             "unchanged": len(existing_paths & new_paths),
-            "failed": len(self.failed),
+            "failed": 0,
             "initial_active": initial_active,
             "initial_deleted": initial_deleted,
         }
@@ -426,30 +426,22 @@ class Database:
         if paths_to_delete and paths_to_add:
             callback("Detecting renamed/moved files...")
             from .rename_detector import detect_renames, apply_renames
-            import os
 
             # Collect entries that appear to be deleted
             potentially_deleted_entries = [
-                entry
-                for entry in self.index.entries
-                if not entry.is_deleted()
-                and normalize_db_path(entry["path"].data) in paths_to_delete
+                entries_by_norm_path[norm_path]
+                for norm_path in paths_to_delete
+                if norm_path in entries_by_norm_path
             ]
 
-            # Build file info for new paths (size, mtime)
-            new_file_info = {}
-            for path in self.paths:
-                # Normalize path for comparison
-                if normalize_scanned_path(path) in paths_to_add:
-                    try:
-                        stat_result = os.stat(path)
-                        new_file_info[path] = (
-                            stat_result.st_size,
-                            stat_result.st_mtime,
-                        )
-                    except (OSError, IOError):
-                        # Skip files we can't stat
-                        pass
+            # Build file info for new paths (size, mtime) from Phase 1 metadata
+            new_file_info = {
+                scanned_norm_to_real[norm_path]: disk_metadata[
+                    scanned_norm_to_real[norm_path]
+                ]
+                for norm_path in paths_to_add
+                if norm_path in scanned_norm_to_real
+            }
 
             # Detect renames
             renames = detect_renames(
@@ -494,27 +486,15 @@ class Database:
         unchanged_norm_paths = existing_paths & new_paths
         if unchanged_norm_paths:
             callback("Checking for modified files...")
-            import os
-
-            scanned_path_by_norm = {
-                normalize_scanned_path(p): p
-                for p in self.paths
-                if normalize_scanned_path(p) in unchanged_norm_paths
-            }
-            entries_by_norm_path = {
-                normalize_db_path(e["path"].data): e
-                for e in self.index.entries
-                if not e.is_deleted()
-            }
-
-            for norm_path, real_path in scanned_path_by_norm.items():
+            for norm_path in unchanged_norm_paths:
                 entry = entries_by_norm_path.get(norm_path)
-                if entry is None:
+                real_path = scanned_norm_to_real.get(norm_path)
+                if entry is None or real_path is None:
                     continue
-                try:
-                    disk_mtime = os.stat(real_path).st_mtime
-                except OSError:
+                file_info = disk_metadata.get(real_path)
+                if not file_info:
                     continue
+                _, disk_mtime = file_info
                 old_mtime = entry.get("mtime")
                 old_fat = mtime_to_fat(old_mtime) if old_mtime else 0
                 if mtime_to_fat(disk_mtime) != old_fat:
@@ -558,16 +538,21 @@ class Database:
                         entry.set_flag(FLAG_DELETED)
                         stats["deleted"] += 1
 
-        # Add new files if any (excluding renamed files)
+        # Phase 2: Targeted tag parsing and entry generation for new/modified files ONLY
         if paths_to_add:
-            callback(f"Adding {len(paths_to_add)} new files...")
-
-            # Filter paths to only include new files
-            # Must use normalized paths for comparison (same normalization as paths_to_add)
-            original_paths = self.paths.copy()
-            self.paths = {
-                p for p in original_paths if normalize_scanned_path(p) in paths_to_add
-            }
+            files_to_read = [
+                scanned_norm_to_real[norm_path]
+                for norm_path in paths_to_add
+                if norm_path in scanned_norm_to_real
+            ]
+            callback(f"Reading tags for {len(files_to_read)} new/modified files...")
+            self.paths.clear()
+            self._scanner.add_files(
+                files_to_read,
+                paths_set=self.paths,
+                failed_list=self.failed,
+                use_parallel=use_parallel,
+            )
 
             # Generate database entries for new files only
             # This preserves existing entries and their indices
@@ -591,9 +576,6 @@ class Database:
                 self.multiple_fields = new_fields
 
             stats["added"] = self.index.count - old_count - len(modified_old_to_path)
-
-            # Restore all paths
-            self.paths = original_paths
         else:
             callback("No new files to add")
             # Signal completion with 0 total so progress bar displays properly
@@ -620,6 +602,7 @@ class Database:
         final_active = sum(1 for e in self.index.entries if not e.is_deleted())
         final_deleted = sum(1 for e in self.index.entries if e.is_deleted())
 
+        stats["failed"] = len(self.failed)
         stats["final_active"] = final_active
         stats["final_deleted"] = final_deleted
 
