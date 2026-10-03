@@ -9,7 +9,7 @@ import os
 from pathlib import Path
 import sys
 import logging
-from typing import Optional, Callable, List, Any, Tuple, Dict
+from typing import Optional, Callable, List, Any, Tuple, Dict, Sequence
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from threading import Lock
 from ..tagging.tag.formats import SUPPORTED_EXTENSIONS as audio_formats
@@ -155,7 +155,7 @@ class FileScanner:
             self._executor = ThreadPoolExecutor(max_workers=self.max_workers)  # type: ignore[assignment]
 
         self._shutdown = False
-    
+
     def _read_tags(self, path: str) -> Optional[Dict[str, Any]]:
         """Read tags from a single file.
 
@@ -256,44 +256,75 @@ class FileScanner:
                 TagCache.set(lowerpath, ((size, mtime), minimal_tags))
                 # Move to end after update
                 TagCache.move_to_end(lowerpath)
-        
+
         # Add ABSOLUTE path to paths_set (normalization happens in generator during _prepare_entry_data)
         # Cache uses lowercase absolute paths as keys, so paths_set must also use absolute paths
         paths_set.add(absolute_path)
-    
-
 
     def add_files(
         self,
-        files: List[str],
+        files: Sequence[str],
         paths_set: set,
         failed_list: list,
         callback: Optional[Callable] = myprint,
+        use_parallel: bool = True,
     ) -> None:
-        """Add a list of files.
+        """Add a list of files with tag parsing.
 
         Args:
-            files: List of file paths to add
+            files: Sequence of file paths to add
             paths_set: Set to add the file paths to
             failed_list: List to add failed file paths to
             callback: Callback function for progress updates
+            use_parallel: Whether to use parallel processing for large batches
         """
         batch_size = 100
-        for i, file in enumerate(files, 1):
-            file = str(file)
-            if callback and i % batch_size == 0:
-                callback(f"Processing files... {i}/{len(files)}")
-            if is_excluded_name(Path(file).name):
-                logging.debug("Skipping macOS metadata sidecar: %s", file)
+        # Filter files first to remove excluded or unsupported files
+        valid_files: List[str] = []
+        for file in files:
+            file_str = str(file)
+            if is_excluded_name(Path(file_str).name):
+                logging.debug("Skipping macOS metadata sidecar: %s", file_str)
                 continue
-            if Path(file).suffix.lower() not in self.supported_extensions:
-                logging.debug("Skipping unsupported file format: %s", file)
+            if Path(file_str).suffix.lower() not in self.supported_extensions:
+                logging.debug("Skipping unsupported file format: %s", file_str)
                 continue
-            self._add_file_internal(file, paths_set, failed_list)
+            valid_files.append(file_str)
 
-        # Final update
-        if callback and len(files) % batch_size != 0:
-            callback(f"Processing files... {len(files)}/{len(files)}")
+        total_files = len(valid_files)
+        if total_files == 0:
+            return
+
+        if use_parallel and total_files > batch_size:
+            file_count = 0
+            for i in range(0, total_files, batch_size):
+                batch = valid_files[i : i + batch_size]
+                results = self.read_tags_batch(batch)
+
+                with self._lock:
+                    for path, size, mtime, tags in results:
+                        if size is not None and tags is not None:
+                            self._add_file_internal(
+                                path, paths_set, failed_list, size, mtime, tags
+                            )
+                            file_count += 1
+                        else:
+                            failed_list.append(path)
+
+                processed = min(i + batch_size, total_files)
+                if callback:
+                    callback(f"Processing files... {processed}/{total_files}")
+        else:
+            file_count = 0
+            for file_path in valid_files:
+                self._add_file_internal(file_path, paths_set, failed_list)
+                file_count += 1
+
+                if callback and file_count % batch_size == 0:
+                    callback(f"Processing files... {file_count}/{total_files}")
+
+            if callback and total_files % batch_size != 0:
+                callback(f"Processing files... {total_files}/{total_files}")
 
     def read_tags_batch(
         self, file_paths: List[str]
@@ -337,16 +368,86 @@ class FileScanner:
 
         return results
 
+    def scan_dir_metadata(
+        self,
+        path: str,
+        recursive: bool = True,
+        dircallback: Optional[Callable[..., Any]] = None,
+    ) -> dict[str, tuple[int, float]]:
+        """Collect file paths, sizes, and modification times without parsing tags.
+
+        Uses os.scandir for high-performance directory traversal.
+
+        Args:
+            path: Directory path to scan
+            recursive: Whether to scan recursively (default: True)
+            dircallback: Optional callback for each visited directory
+
+        Returns:
+            Dictionary mapping absolute file path to (size, mtime) tuple.
+        """
+
+        def blank(*args: Any, **kwargs: Any) -> None:
+            pass
+
+        if not dircallback:
+            dircallback = blank
+
+        original_root = str(path)
+        metadata: Dict[str, Tuple[int, float]] = {}
+
+        def scan_directory(dir_path: str) -> None:
+            try:
+                with os.scandir(dir_path) as entries:
+                    dirs_to_scan = []
+                    for entry in entries:
+                        try:
+                            if is_excluded_name(entry.name):
+                                # AppleDouble sidecar or __MACOSX dir - never
+                                # descend into it, never enqueue it.
+                                continue
+                            if entry.is_dir(follow_symlinks=False):
+                                dirs_to_scan.append(entry.path)
+                            elif entry.is_file(follow_symlinks=False):
+                                # Check extension using entry name (no extra syscall)
+                                if (
+                                    Path(entry.name).suffix.lower()
+                                    in self.supported_extensions
+                                ):
+                                    stat_info = entry.stat(follow_symlinks=False)
+                                    abs_path = str(Path(entry.path).absolute())
+                                    metadata[abs_path] = (
+                                        stat_info.st_size,
+                                        stat_info.st_mtime,
+                                    )
+                        except OSError:
+                            # Skip files/dirs we can't access
+                            continue
+
+                    # Recurse into subdirectories if needed
+                    if recursive:
+                        for subdir in sorted(dirs_to_scan):
+                            dircallback(subdir)
+                            scan_directory(subdir)
+
+            except OSError as e:
+                logging.warning("Cannot access directory %s: %s", dir_path, e)
+
+        # Start scanning from root
+        dircallback(original_root)
+        scan_directory(original_root)
+        return metadata
+
     def add_dir(
         self,
         path: str,
-        paths_set: set,
-        failed_list: list,
+        paths_set: set[str],
+        failed_list: list[str],
         recursive: bool = True,
         use_parallel: bool = True,
-        dircallback: Optional[Callable] = myprint,
-        filecallback: Optional[Callable] = None,
-        estimatecallback: Optional[Callable] = None,
+        dircallback: Optional[Callable[..., Any]] = myprint,
+        filecallback: Optional[Callable[..., Any]] = None,
+        estimatecallback: Optional[Callable[..., Any]] = None,
     ) -> None:
         """Add a directory (recursively by default) with optional parallel processing.
 
@@ -360,98 +461,21 @@ class FileScanner:
             filecallback: Callback function called for each file
             estimatecallback: Callback function for progress estimation
         """
-
-        def blank(*args: Any, **kwargs: Any) -> None:
-            pass
-
-        if not dircallback:
-            dircallback = blank
-        if not filecallback:
-            filecallback = blank
-
-        original_root = str(path)
-        batch_size = 100  # Process files in batches
-
-        # Collect all files using os.scandir for faster traversal (2-20x faster than os.walk)
-        # scandir gets filenames and stat info in one syscall, unlike os.walk
-        all_files = []
-        
-        def scan_directory(dir_path: str) -> None:
-            """Recursively scan directory using os.scandir for performance."""
-            try:
-                with os.scandir(dir_path) as entries:
-                    dirs_to_scan = []
-                    files_in_dir = []
-                    
-                    for entry in entries:
-                        try:
-                            if is_excluded_name(entry.name):
-                                # AppleDouble sidecar or __MACOSX dir - never
-                                # descend into it, never enqueue it.
-                                continue
-                            if entry.is_dir(follow_symlinks=False):
-                                dirs_to_scan.append(entry.path)
-                            elif entry.is_file(follow_symlinks=False):
-                                # Check extension using entry name (no extra syscall)
-                                if Path(entry.name).suffix.lower() in self.supported_extensions:
-                                    files_in_dir.append(entry.path)
-                        except OSError:
-                            # Skip files/dirs we can't access
-                            continue
-                    
-                    # Sort and add files from this directory
-                    all_files.extend(sorted(files_in_dir))
-                    
-                    # Recurse into subdirectories if needed
-                    if recursive:
-                        for subdir in sorted(dirs_to_scan):
-                            dircallback(subdir)
-                            scan_directory(subdir)
-                            
-            except OSError as e:
-                logging.warning("Cannot access directory %s: %s", dir_path, e)
-        
-        # Start scanning from root
-        dircallback(original_root)
-        scan_directory(original_root)
-
-        total_files = len(all_files)
+        metadata = self.scan_dir_metadata(
+            path, recursive=recursive, dircallback=dircallback
+        )
+        all_files = sorted(metadata.keys())
 
         if estimatecallback:
-            estimatecallback(total_files)
+            estimatecallback(len(all_files))
 
-        # Process files
-        if use_parallel and total_files > batch_size:
-            # Parallel processing for large datasets
-            file_count = 0
-            for i in range(0, total_files, batch_size):
-                batch = all_files[i : i + batch_size]
-                results = self.read_tags_batch(batch)
-
-                # Add results to cache with thread-safe operations
-                with self._lock:
-                    for path, size, mtime, tags in results:
-                        if size is not None and tags is not None:
-                            self._add_file_internal(
-                                path, paths_set, failed_list, size, mtime, tags
-                            )
-                            file_count += 1
-                        else:
-                            failed_list.append(path)
-
-                processed = min(i + batch_size, total_files)
-                if filecallback:
-                    filecallback(f"Processing files... {processed}/{total_files}")
-        else:
-            # Sequential processing for small file counts
-            file_count = 0
-            for file_path_obj in all_files:
-                file_path_str = str(file_path_obj)
-                self._add_file_internal(file_path_str, paths_set, failed_list)
-                file_count += 1
-
-                if filecallback and file_count % batch_size == 0:
-                    filecallback(f"Processing files... {file_count}/{total_files}")
+        self.add_files(
+            all_files,
+            paths_set=paths_set,
+            failed_list=failed_list,
+            callback=filecallback,
+            use_parallel=use_parallel,
+        )
 
     def shutdown(self, wait: bool = True) -> None:
         """Shutdown the persistent executor pool (ProcessPoolExecutor or ThreadPoolExecutor).
