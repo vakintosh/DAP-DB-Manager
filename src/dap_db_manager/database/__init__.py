@@ -21,7 +21,7 @@ from ..constants import FORMATTED_TAGS, FILE_TAGS, FLAG_DELETED
 from ..tagging.tag.tagfile import TagFile
 from ..indexfile import IndexFile
 from ..config import Config
-from ..utils import normalize_dap_path
+from ..utils import normalize_dap_path, mtime_to_fat
 
 from .cache import TagCache
 from .file_scanner import FileScanner, myprint
@@ -328,8 +328,12 @@ class Database:
         Similar to Rockbox's Q_UPDATE:
         - Scans for new files not in the database
         - Detects renamed/moved files to preserve statistics
+        - Detects files retagged in place (same path, changed mtime) and
+          re-reads their tags -- matches Rockbox's own add_tagcache(), which
+          compares the stored vs on-disk mtime and re-adds on a mismatch
         - Marks missing files with FLAG_DELETED
         - Preserves existing entries and statistics (playcount, rating, etc.)
+          across renames and in-place retags
         - Faster than full rebuild
 
         Args:
@@ -341,6 +345,7 @@ class Database:
             Dictionary with statistics:
                 - added: Number of new files added
                 - renamed: Number of files renamed/moved (statistics preserved)
+                - modified: Number of files re-tagged in place (statistics preserved)
                 - deleted: Number of files marked as deleted
                 - unchanged: Number of existing entries preserved
                 - failed: Number of files that failed to process
@@ -402,6 +407,7 @@ class Database:
         stats = {
             "added": 0,
             "renamed": 0,
+            "modified": 0,
             "deleted": 0,
             "unchanged": len(existing_paths & new_paths),
             "failed": len(self.failed),
@@ -469,6 +475,74 @@ class Database:
                     f"Remaining: {len(paths_to_delete)} to delete, {len(paths_to_add)} to add"
                 )
 
+        # Detect modified files: same (normalized) path on both sides, but the
+        # on-disk mtime no longer matches what's stored in the database. This
+        # is the common case of retagging a file without renaming it -- rename
+        # detection above only helps when the path itself changes, so without
+        # this check an in-place tag edit falls into "unchanged" and is never
+        # rescanned. Mirrors Rockbox's own tagcache_update: add_tagcache()
+        # compares idx.tag_seek[tag_mtime] against the on-disk mtime and
+        # re-adds the entry on a mismatch, resurrecting the old entry's
+        # runtime stats onto the replacement.
+        modified_old_to_path = {}
+        modified_stats_by_path = {}
+        unchanged_norm_paths = existing_paths & new_paths
+        if unchanged_norm_paths:
+            callback("Checking for modified files...")
+            import os
+
+            scanned_path_by_norm = {
+                normalize_scanned_path(p): p
+                for p in self.paths
+                if normalize_scanned_path(p) in unchanged_norm_paths
+            }
+            entries_by_norm_path = {
+                normalize_db_path(e["path"].data): e
+                for e in self.index.entries
+                if not e.is_deleted()
+            }
+
+            for norm_path, real_path in scanned_path_by_norm.items():
+                entry = entries_by_norm_path.get(norm_path)
+                if entry is None:
+                    continue
+                try:
+                    disk_mtime = os.stat(real_path).st_mtime
+                except OSError:
+                    continue
+                old_mtime = entry.get("mtime")
+                old_fat = mtime_to_fat(old_mtime) if old_mtime else 0
+                if mtime_to_fat(disk_mtime) != old_fat:
+                    modified_old_to_path[norm_path] = real_path
+
+            if modified_old_to_path:
+                from .stats_preserver import STAT_TAGS
+
+                callback(
+                    f"Found {len(modified_old_to_path)} modified file(s), re-tagging..."
+                )
+                for norm_path in modified_old_to_path:
+                    entry = entries_by_norm_path[norm_path]
+                    values = {}
+                    for tag in STAT_TAGS:
+                        try:
+                            value = entry[tag]
+                        except (KeyError, AttributeError):
+                            continue
+                        if value:
+                            values[tag] = value
+                    if values:
+                        modified_stats_by_path[norm_path] = values
+                    # Mark the stale entry deleted; its replacement goes
+                    # through the normal "add new files" path below, which is
+                    # how it picks up freshly-read tags.
+                    entry.set_flag(FLAG_DELETED)
+
+                # Route the on-disk file back through the "add" pipeline so
+                # it is rescanned exactly like a genuinely new file.
+                paths_to_add = paths_to_add | set(modified_old_to_path.keys())
+                stats["unchanged"] -= len(modified_old_to_path)
+
         # Mark deleted files (excluding renamed files)
         if paths_to_delete:
             callback(f"Marking {len(paths_to_delete)} deleted files...")
@@ -509,7 +583,7 @@ class Database:
             else:
                 self.multiple_fields = new_fields
 
-            stats["added"] = self.index.count - old_count
+            stats["added"] = self.index.count - old_count - len(modified_old_to_path)
 
             # Restore all paths
             self.paths = original_paths
@@ -517,6 +591,23 @@ class Database:
             callback("No new files to add")
             # Signal completion with 0 total so progress bar displays properly
             callback(0, 0)
+
+        # Apply preserved runtime stats onto the freshly re-tagged entries for
+        # modified files. Matching is by exact normalized path (not the fuzzy
+        # rename heuristics) since the path never changed.
+        if modified_stats_by_path:
+            from .stats_preserver import StatsPreserver
+
+            preserver = StatsPreserver(modified_stats_by_path)
+            for entry in self.index.entries:
+                if entry.is_deleted():
+                    continue
+                norm_path = normalize_db_path(entry["path"].data)
+                if norm_path in modified_stats_by_path:
+                    preserver.apply(norm_path, entry)
+            stats["modified"] = preserver.matched
+        else:
+            stats["modified"] = len(modified_old_to_path)
 
         # Calculate final counts
         final_active = sum(1 for e in self.index.entries if not e.is_deleted())
@@ -527,6 +618,7 @@ class Database:
 
         callback(
             f"Update complete: {stats['added']} added, {stats['renamed']} renamed, "
+            f"{stats['modified']} modified, "
             f"{stats['deleted']} deleted, {stats['unchanged']} unchanged, "
             f"{final_active} active entries ({final_deleted} deleted)"
         )
