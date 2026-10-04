@@ -17,6 +17,7 @@ from .write import cmd_write
 from .inspect import cmd_inspect
 from .update import cmd_update
 from .detect_mounts import cmd_detect_mounts
+from .peaks import cmd_peaks
 
 __all__ = [
     "cmd_generate",
@@ -26,4 +27,5 @@ __all__ = [
     "cmd_inspect",
     "cmd_update",
     "cmd_detect_mounts",
+    "cmd_peaks",
 ]

@@ -28,6 +28,7 @@ from .commands import (
     cmd_inspect,
     cmd_update,
     cmd_detect_mounts,
+    cmd_peaks,
 )
 from ..config import Config
 from ..database.cache import TagCache
@@ -44,6 +45,7 @@ __all__ = [
     "cmd_inspect",
     "cmd_update",
     "cmd_detect_mounts",
+    "cmd_peaks",
     "setup_logging",
 ]
 
@@ -188,6 +190,12 @@ def parse_args() -> tuple[argparse.ArgumentParser, argparse.Namespace]:
             "for a DAP, specify the mount point (e.g., /Volumes/DAP or E:) to strip from paths. "
             "Example: /Volumes/DAP/Music/Song.mp3 → /Music/Song.mp3 in database"
         ),
+    )
+    generate_options.add_argument(
+        "--peaks",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Generate waveform peak cache files (.peaks) for tracks (default: enabled)",
     )
     generate_global = generate_parser.add_argument_group("Global Options")
     add_global_options(generate_global)
@@ -373,6 +381,12 @@ def parse_args() -> tuple[argparse.ArgumentParser, argparse.Namespace]:
             "Example: /Volumes/DAP/Music/Song.mp3 → /Music/Song.mp3 in database"
         ),
     )
+    update_options.add_argument(
+        "--peaks",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Generate waveform peak cache files (.peaks) for tracks (default: enabled)",
+    )
     update_global = update_parser.add_argument_group("Global Options")
     add_global_options(update_global)
     update_parser.set_defaults(func=cmd_update)
@@ -411,6 +425,98 @@ def parse_args() -> tuple[argparse.ArgumentParser, argparse.Namespace]:
     add_global_options(detect_mounts_global)
     detect_mounts_parser.set_defaults(func=cmd_detect_mounts)
 
+    # ──────────────────────────────
+    # peaks
+    # ──────────────────────────────
+    peaks_parser = subparsers.add_parser(
+        "peaks",
+        help="Generate or inspect waveform peaks cache for fast UI rendering",
+        usage="ddm peaks <action> [options]",
+        description="Generate or inspect waveform peak cache files (.peaks) for tracks.",
+        formatter_class=RichHelpFormatter,
+        add_help=False,
+    )
+    peaks_subparsers = peaks_parser.add_subparsers(
+        title="Actions",
+        dest="peaks_action",
+        metavar="",
+    )
+
+    # peaks generate
+    peaks_generate_parser = peaks_subparsers.add_parser(
+        "generate",
+        help="Batch generate waveform peaks for music library",
+        usage="ddm peaks generate --music-dir <path> [--output <path>] [options]",
+        description="Scan music directory and generate 300-byte .peaks sidecar files in output directory.",
+        formatter_class=RichHelpFormatter,
+        add_help=False,
+    )
+    peaks_gen_req = peaks_generate_parser.add_argument_group("Required")
+    peaks_gen_req.add_argument(
+        "--music-dir",
+        type=Path,
+        required=True,
+        help="Path to music directory to scan",
+    )
+    peaks_gen_opt = peaks_generate_parser.add_argument_group("Options")
+    peaks_gen_opt.add_argument(
+        "-o",
+        "--output",
+        type=Path,
+        default=None,
+        help="Target directory for .peaks files (default: <music-dir>/.rockbox/soulectionpod/peaks)",
+    )
+    peaks_gen_opt.add_argument(
+        "-j",
+        "--jobs",
+        type=int,
+        default=None,
+        help="Number of worker processes (default: CPU count)",
+    )
+    peaks_gen_opt.add_argument(
+        "-f",
+        "--force",
+        action="store_true",
+        default=False,
+        help="Force re-generation of all peak files even if up to date",
+    )
+    peaks_gen_global = peaks_generate_parser.add_argument_group("Global Options")
+    add_global_options(peaks_gen_global)
+    peaks_generate_parser.set_defaults(func=cmd_peaks)
+
+    # peaks inspect
+    peaks_inspect_parser = peaks_subparsers.add_parser(
+        "inspect",
+        help="Inspect .peaks binary cache file",
+        usage="ddm peaks inspect <peaks_file> [options]",
+        description="Parse and display duration and waveform peak amplitudes from a .peaks file.",
+        formatter_class=RichHelpFormatter,
+        add_help=False,
+    )
+    peaks_insp_req = peaks_inspect_parser.add_argument_group("Required")
+    peaks_insp_req.add_argument(
+        "peaks_file",
+        type=Path,
+        nargs="?",
+        default=None,
+        help="Path to .peaks file to inspect",
+    )
+    peaks_insp_opt = peaks_inspect_parser.add_argument_group("Options")
+    peaks_insp_opt.add_argument(
+        "--peaks-file",
+        dest="peaks_file_opt",
+        type=Path,
+        default=None,
+        help="Path to .peaks file to inspect",
+    )
+    peaks_insp_global = peaks_inspect_parser.add_argument_group("Global Options")
+    add_global_options(peaks_insp_global)
+    peaks_inspect_parser.set_defaults(func=cmd_peaks)
+
+    peaks_global = peaks_parser.add_argument_group("Global Options")
+    add_global_options(peaks_global)
+    peaks_parser.set_defaults(func=cmd_peaks)
+
     # Parse args
     return parser, parser.parse_args()
 
@@ -446,6 +552,9 @@ def main():
 
     # Execute command
     try:
+        if getattr(args, "command", None) == "peaks":
+            res = cmd_peaks(args)
+            sys.exit(res if isinstance(res, int) else ExitCode.SUCCESS)
         args.func(args)
     except KeyboardInterrupt:
         logging.info("\nOperation cancelled by user")

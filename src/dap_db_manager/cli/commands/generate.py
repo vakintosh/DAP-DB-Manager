@@ -21,6 +21,7 @@ from ...database.stats_preserver import StatsPreserver, read_existing_stats
 from ...database.cache import TagCache
 from ...config import Config
 from ...constants import FILE_TAGS
+from ...peaks.manager import generate_peaks_for_library, resolve_peaks_dir
 from ..callbacks import ProgressCallback, log_callback
 from ..utils import ExitCode, json_output
 from ..schemas import ErrorResponse, GenerateSuccessResponse
@@ -420,6 +421,20 @@ def cmd_generate(args: argparse.Namespace) -> None:
         sys.exit(ExitCode.WRITE_FAILED)
 
     console.print("[green]✓[/green] Database generation complete")
+
+    if getattr(args, "peaks", False):
+        try:
+            peaks_dir = resolve_peaks_dir(output_path)
+            workers = getattr(args, "workers", None)
+            if not use_json:
+                console.print("[cyan]Generating waveform peaks...[/cyan]")
+            generate_peaks_for_library(
+                music_dir=music_path,
+                output_dir=peaks_dir,
+                jobs=workers,
+            )
+        except Exception as e:
+            logging.warning("Waveform peaks generation encountered an error: %s", e)
 
     duration_ms = int((time.time() - start_time) * 1000)
 
