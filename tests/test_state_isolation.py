@@ -6,7 +6,6 @@ finishes, which silently distorts every test that runs afterwards.
 
 import tracemalloc
 
-import pytest
 
 from dap_db_manager.database import TagCache
 

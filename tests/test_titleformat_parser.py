@@ -3,9 +3,6 @@
 import pytest
 from dap_db_manager.tagging.titleformat import compile as titleformat_compile
 from dap_db_manager.tagging.titleformat.field import Field
-from dap_db_manager.tagging.titleformat.function import Function
-from dap_db_manager.tagging.titleformat.conditional import Conditional
-from dap_db_manager.tagging.titleformat.string import String
 
 
 class TestTitleformatBasics:
@@ -43,10 +40,10 @@ class TestTitleformatFields:
     def test_field_evaluation_with_mock(self):
         """Test field evaluation with mock tag."""
         from unittest.mock import Mock
-        
+
         mock_tag = Mock()
         mock_tag.get_string = Mock(return_value=["Test Artist"])
-        
+
         fmt = titleformat_compile("%artist%")
         result = fmt.format(mock_tag)
         assert result == "Test Artist"
@@ -54,10 +51,10 @@ class TestTitleformatFields:
     def test_field_missing_tag(self):
         """Test field with missing tag data."""
         from unittest.mock import Mock
-        
+
         mock_tag = Mock()
         mock_tag.get_string = Mock(return_value=[])
-        
+
         fmt = titleformat_compile("%artist%")
         result = fmt.format(mock_tag)
         # Should return empty string for missing fields
@@ -99,7 +96,7 @@ class TestTitleformatFunctions:
             "$substr(%artist%,0,5)",
             "$replace(%artist%,a,b)",
         ]
-        
+
         for func_str in functions:
             fmt = titleformat_compile(func_str)
             assert fmt is not None, f"Failed to parse: {func_str}"
@@ -135,54 +132,56 @@ class TestTitleformatEvaluation:
     def test_eval_simple_field(self):
         """Test evaluating a simple field."""
         from unittest.mock import Mock
-        
+
         fmt = titleformat_compile("%artist%")
-        
+
         mock_tag = Mock()
         mock_tag.get_string = Mock(return_value=["Test Artist"])
-        
+
         result = fmt.format(mock_tag)
         assert result == "Test Artist"
 
     def test_eval_multiple_fields(self):
         """Test evaluating multiple fields."""
         from unittest.mock import Mock
-        
+
         fmt = titleformat_compile("%artist% - %title%")
-        
+
         mock_tag = Mock()
-        mock_tag.get_string = Mock(side_effect=lambda x: {
-            "artist": ["Test Artist"],
-            "title": ["Test Song"]
-        }.get(x, []))
-        
+        mock_tag.get_string = Mock(
+            side_effect=lambda x: {
+                "artist": ["Test Artist"],
+                "title": ["Test Song"],
+            }.get(x, [])
+        )
+
         result = fmt.format(mock_tag)
         assert result == "Test Artist - Test Song"
 
     def test_eval_with_function(self):
         """Test evaluating with a function."""
         from unittest.mock import Mock
-        
+
         fmt = titleformat_compile("$upper(%artist%)")
-        
+
         mock_tag = Mock()
         mock_tag.get_string = Mock(return_value=["test artist"])
-        
+
         result = fmt.format(mock_tag)
         assert result == "TEST ARTIST"
 
     def test_eval_conditional(self):
         """Test evaluating a conditional."""
         from unittest.mock import Mock
-        
+
         fmt = titleformat_compile("$if(%artist%,Has artist,No artist)")
-        
+
         # Tag with artist
         mock_tag1 = Mock()
         mock_tag1.get_string = Mock(return_value=["Test Artist"])
         result1 = fmt.format(mock_tag1)
         assert result1 == "Has artist"
-        
+
         # Tag without artist
         # Tag without artist
         mock_tag2 = Mock()
@@ -254,21 +253,23 @@ class TestTitleformatIntegration:
     def test_real_world_format(self):
         """Test a real-world titleformat string."""
         from unittest.mock import Mock
-        
+
         fmt = titleformat_compile(
             "$if2(%albumartist%,%artist%) - %album%'['%date%']' - $num(%tracknumber%,2) - %title%"
         )
-        
+
         mock_tag = Mock()
-        mock_tag.get_string = Mock(side_effect=lambda x: {
-            "artist": ["Artist Name"],
-            "albumartist": ["Album Artist"],
-            "album": ["Album Title"],
-            "date": ["2023"],
-            "tracknumber": ["5"],
-            "title": ["Song Title"]
-        }.get(x, []))
-        
+        mock_tag.get_string = Mock(
+            side_effect=lambda x: {
+                "artist": ["Artist Name"],
+                "albumartist": ["Album Artist"],
+                "album": ["Album Title"],
+                "date": ["2023"],
+                "tracknumber": ["5"],
+                "title": ["Song Title"],
+            }.get(x, [])
+        )
+
         result = fmt.format(mock_tag)
         # Should produce properly formatted output
 
@@ -280,7 +281,7 @@ class TestTitleformatCaching:
         """Test that compilation results are cached."""
         fmt1 = titleformat_compile("%artist% - %title%")
         fmt2 = titleformat_compile("%artist% - %title%")
-        
+
         # Same format string should return cached result
         assert fmt1 is fmt2
 
@@ -291,54 +292,54 @@ class TestTitleformatFunctionLibrary:
     def test_upper_function(self):
         """Test $upper() function."""
         from unittest.mock import Mock
-        
+
         fmt = titleformat_compile("$upper(%artist%)")
         mock_tag = Mock()
         mock_tag.get_string = Mock(return_value=["artist"])
-        
+
         result = fmt.format(mock_tag)
         assert result == "ARTIST"
 
     def test_lower_function(self):
         """Test $lower() function."""
         from unittest.mock import Mock
-        
+
         fmt = titleformat_compile("$lower(%artist%)")
         mock_tag = Mock()
         mock_tag.get_string = Mock(return_value=["ARTIST"])
-        
+
         result = fmt.format(mock_tag)
         assert result == "artist"
 
     def test_len_function(self):
         """Test $len() function."""
         from unittest.mock import Mock
-        
+
         fmt = titleformat_compile("$len(%artist%)")
         mock_tag = Mock()
         mock_tag.get_string = Mock(return_value=["Artist"])
-        
+
         result = fmt.format(mock_tag)
         assert result == "6"
 
     def test_left_function(self):
         """Test $left() function."""
         from unittest.mock import Mock
-        
+
         fmt = titleformat_compile("$left(%artist%,3)")
         mock_tag = Mock()
         mock_tag.get_string = Mock(return_value=["Artist"])
-        
+
         result = fmt.format(mock_tag)
         assert result == "Art"
 
     def test_num_function(self):
         """Test $num() function for number formatting."""
         from unittest.mock import Mock
-        
+
         fmt = titleformat_compile("$num(%tracknumber%,2)")
         mock_tag = Mock()
         mock_tag.get_string = Mock(return_value=["5"])
-        
+
         result = fmt.format(mock_tag)
         assert result == "05"

@@ -1,10 +1,7 @@
 """Tests for TagCache class and cache management."""
 
 import pytest
-import tempfile
-import os
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock
 from dap_db_manager.database.cache import TagCache, SimpleTag
 
 
@@ -13,9 +10,13 @@ class TestSimpleTag:
 
     def test_simple_tag_creation(self):
         """Test creating a SimpleTag from a dictionary."""
-        tag_dict = {"artist": ["Test Artist"], "album": ["Test Album"], "title": ["Test Title"]}
+        tag_dict = {
+            "artist": ["Test Artist"],
+            "album": ["Test Album"],
+            "title": ["Test Title"],
+        }
         tag = SimpleTag(tag_dict)
-        
+
         assert tag["artist"] == ["Test Artist"]
         assert tag["album"] == ["Test Album"]
         assert tag["title"] == ["Test Title"]
@@ -24,10 +25,10 @@ class TestSimpleTag:
         """Test get_string method for titleformat compatibility."""
         tag_dict = {"artist": ["Artist Name"], "album": ["Album Name"]}
         tag = SimpleTag(tag_dict)
-        
+
         assert tag.get_string("artist") == ["Artist Name"]
         assert tag.get_string("album") == ["Album Name"]
-        
+
         # get_string raises KeyError for missing keys (matches mutagen behavior)
         with pytest.raises(KeyError):
             tag.get_string("nonexistent")
@@ -36,10 +37,10 @@ class TestSimpleTag:
         """Test handling of missing keys."""
         tag_dict = {"artist": ["Artist"]}
         tag = SimpleTag(tag_dict)
-        
+
         # Missing keys should raise KeyError via get_string (SimpleTag matches mutagen)
         with pytest.raises(KeyError):
-             tag.get_string("album")
+            tag.get_string("album")
 
         # Direct access should raise KeyError
         with pytest.raises(KeyError):
@@ -73,10 +74,10 @@ class TestTagCacheBasics:
         """Test setting and getting cache values."""
         test_key = "/test/path/song.mp3"
         test_value = ((1000, 1234567890), {"artist": ["Test"], "album": ["Album"]})
-        
+
         TagCache.set(test_key, test_value)
         retrieved = TagCache.get(test_key)
-        
+
         assert retrieved is not None
         assert retrieved[0] == (1000, 1234567890)
         assert retrieved[1]["artist"] == ["Test"]
@@ -90,9 +91,9 @@ class TestTagCacheBasics:
         """Test clearing the cache."""
         TagCache.set("/test1.mp3", ((100, 111), {}))
         TagCache.set("/test2.mp3", ((200, 222), {}))
-        
+
         assert len(TagCache.get_cache()) == 2
-        
+
         TagCache.clear()
         assert len(TagCache.get_cache()) == 0
 
@@ -138,7 +139,7 @@ class TestTagCacheMemoryManagement:
         """Test enabling and disabling memory tracking."""
         TagCache.set_memory_tracking(False)
         TagCache.set("/test.mp3", ((100, 111), {}))
-        
+
         # With tracking disabled, get_current_memory_usage forces recalculation
         # So it should return actual usage > 0
         bytes_used, _, _ = TagCache.get_current_memory_usage()
@@ -168,7 +169,7 @@ class TestTagCacheEssentialTags:
         """Test extracting essential tags from a mock tag object."""
         mock_tag = Mock()
         mock_tag.__getitem__ = lambda self, key: f"value_{key}"
-        
+
         result = TagCache.extract_essential_tags(mock_tag)
         assert isinstance(result, dict)
 
@@ -181,7 +182,7 @@ class TestTagCacheEssentialTags:
         """Test restoring a tag dictionary."""
         tag_dict = {"artist": ["Artist"], "album": ["Album"]}
         result = TagCache.restore_tag_dict(tag_dict)
-        
+
         assert isinstance(result, SimpleTag)
         assert result["artist"] == ["Artist"]
         assert result.get_string("album") == ["Album"]
@@ -202,10 +203,16 @@ class TestTagCachePersistence:
         """Test saving and loading cache to/from file."""
         # Populate cache
         test_data = {
-            "/test1.mp3": ((1000, 1234567890), {"artist": ["Artist1"], "title": ["Song1"]}),
-            "/test2.mp3": ((2000, 1234567891), {"artist": ["Artist2"], "title": ["Song2"]}),
+            "/test1.mp3": (
+                (1000, 1234567890),
+                {"artist": ["Artist1"], "title": ["Song1"]},
+            ),
+            "/test2.mp3": (
+                (2000, 1234567891),
+                {"artist": ["Artist2"], "title": ["Song2"]},
+            ),
         }
-        
+
         for path, value in test_data.items():
             TagCache.set(path, value)
 
@@ -238,10 +245,10 @@ class TestTagCachePersistence:
         cache_file = tmp_path / "nested" / "dir" / "cache.pkl.gz"
         paths_set = {"/test.mp3"}
         TagCache.set("/test.mp3", ((100, 111), {"artist": ["Artist"]}))
-        
+
         # Create parent directory first (save doesn't auto-create)
         cache_file.parent.mkdir(parents=True, exist_ok=True)
-        
+
         TagCache.save(str(cache_file), paths_set)
         assert cache_file.exists()
 
@@ -249,7 +256,7 @@ class TestTagCachePersistence:
         """Test saving an empty cache."""
         cache_file = tmp_path / "empty_cache.pkl.gz"
         paths_set = set()
-        
+
         TagCache.save(str(cache_file), paths_set)
         # Should create an empty cache file
         assert cache_file.exists()
@@ -287,7 +294,7 @@ class TestTagCacheCleanup:
 
         initial_count = len(TagCache.get_cache())
         TagCache.cleanup(None)
-        
+
         # Should keep everything
         assert len(TagCache.get_cache()) == initial_count
 

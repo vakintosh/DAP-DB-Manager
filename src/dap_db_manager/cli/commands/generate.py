@@ -431,6 +431,7 @@ def cmd_generate(args: argparse.Namespace) -> None:
             generate_peaks_for_library(
                 music_dir=music_path,
                 output_dir=peaks_dir,
+                dap_root=getattr(args, "dap_root", None),
                 jobs=workers,
             )
         except Exception as e:

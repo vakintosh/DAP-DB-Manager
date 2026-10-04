@@ -83,6 +83,7 @@ def process_single_track(
 def generate_peaks_for_library(
     music_dir: Path,
     output_dir: Path,
+    dap_root: Path | None = None,
     jobs: int | None = None,
     force: bool = False,
     progress_callback: Callable[[int, int], None] | None = None,
@@ -92,6 +93,7 @@ def generate_peaks_for_library(
     Args:
         music_dir: Path to the music directory.
         output_dir: Destination directory for .peaks sidecar cache files.
+        dap_root: Optional root directory of the DAP for relative path calculation.
         jobs: Number of worker processes (default: os.cpu_count() or 4).
         force: If True, re-generate peaks even if cached files are up to date.
         progress_callback: Optional callback invoked with (completed, total) after each track.
@@ -108,9 +110,16 @@ def generate_peaks_for_library(
         for p in music_path.rglob("*"):
             if p.is_file() and p.suffix.lower() in AUDIO_EXTENSIONS:
                 try:
-                    rel = str(p.relative_to(music_path))
+                    if dap_root is not None and p.is_relative_to(dap_root):
+                        rel = str(p.relative_to(dap_root))
+                    else:
+                        rel = str(p.relative_to(music_path))
                 except ValueError:
                     rel = p.name
+
+                if not rel.lower().startswith("music/") and music_path.name.lower() == "music":
+                    rel = f"music/{rel}"
+
                 tracks.append((p, rel))
 
     tracks.sort(key=lambda t: t[1])

@@ -13,7 +13,6 @@ mount point is not guaranteed to match what the user typed. The helper must
 preserve that.
 """
 
-import pytest
 
 from dap_db_manager.utils import normalize_dap_path
 
@@ -54,13 +53,14 @@ class TestStripDapRoot:
 
     def test_backslashes_are_normalised(self):
         assert (
-            normalize_dap_path(r"E:\Music\Song.mp3", dap_root="E:")
-            == "/Music/Song.mp3"
+            normalize_dap_path(r"E:\Music\Song.mp3", dap_root="E:") == "/Music/Song.mp3"
         )
 
     def test_returns_none_when_path_is_outside_dap_root(self):
         """The generator skips these files and logs a warning."""
-        assert normalize_dap_path("/elsewhere/Song.mp3", dap_root="/Volumes/DAP") is None
+        assert (
+            normalize_dap_path("/elsewhere/Song.mp3", dap_root="/Volumes/DAP") is None
+        )
 
     def test_result_always_has_a_leading_slash(self):
         assert (

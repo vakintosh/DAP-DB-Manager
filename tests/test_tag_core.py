@@ -1,8 +1,7 @@
 """Tests for Tag class and tag reading functionality."""
 
 import pytest
-from pathlib import Path
-from unittest.mock import Mock, MagicMock, patch
+from unittest.mock import Mock
 from dap_db_manager.tagging.tag.core import Tag
 from tests.conftest import music_test_folder
 
@@ -14,7 +13,7 @@ class TestTagInitialization:
         """Test creating a Tag with a mock mutagen object."""
         mock_tags = Mock()
         mock_tags.__class__.__name__ = "MP3"
-        
+
         tag = Tag(mock_tags)
         assert tag is not None
         assert tag.tags == mock_tags
@@ -23,7 +22,7 @@ class TestTagInitialization:
         """Test Tag with force_string parameter."""
         mock_tags = Mock()
         mock_tags.__class__.__name__ = "FLAC"
-        
+
         tag = Tag(mock_tags, force_string=True)
         assert tag.force_string is True
 
@@ -31,10 +30,10 @@ class TestTagInitialization:
         """Test force_string property getter/setter."""
         mock_tags = Mock()
         mock_tags.__class__.__name__ = "MP3"
-        
+
         tag = Tag(mock_tags, force_string=False)
         assert tag.force_string is False
-        
+
         tag.force_string = True
         assert tag.force_string is True
 
@@ -47,7 +46,7 @@ class TestTagPropertyAccess:
         mock_tags = Mock()
         mock_tags.__class__.__name__ = "MP3"
         mock_tags.__getitem__ = Mock(return_value=["Test Artist"])
-        
+
         tag = Tag(mock_tags)
         # This will use the tag_mapping to access fields
         # The behavior depends on registered keys
@@ -56,18 +55,18 @@ class TestTagPropertyAccess:
         """Test get() method."""
         mock_tags = Mock()
         mock_tags.__class__.__name__ = "FLAC"
-        
+
         tag = Tag(mock_tags)
         # Test get method - behavior depends on tag_mapping
         # Just verify the method exists and is callable
-        assert hasattr(tag, 'get')
+        assert hasattr(tag, "get")
         assert callable(tag.get)
 
     def test_tag_get_string(self):
         """Test get_string() method."""
         mock_tags = Mock()
         mock_tags.__class__.__name__ = "MP3"
-        
+
         tag = Tag(mock_tags)
         # get_string should convert to string list
 
@@ -79,7 +78,7 @@ class TestTagMapping:
         """Test update_mapping method."""
         mock_tags = Mock()
         mock_tags.__class__.__name__ = "MP3"
-        
+
         tag = Tag(mock_tags)
         tag.update_mapping()
         # Should update tag_mapping based on tag type
@@ -98,10 +97,10 @@ class TestTagSerialization:
         mock_tags = Mock()
         mock_tags.__class__.__name__ = "FLAC"
         mock_tags.filename = "/test/file.flac"
-        
+
         tag = Tag(mock_tags)
         state = tag.__getstate__()
-        
+
         # __getstate__ returns a tuple (tags, force_string)
         assert isinstance(state, tuple)
         assert len(state) == 2
@@ -110,10 +109,10 @@ class TestTagSerialization:
         """Test __setstate__ for unpickling."""
         mock_tags = Mock()
         mock_tags.__class__.__name__ = "MP3"
-        
+
         tag = Tag(mock_tags)
         state = {"force_string": True, "filename": "/test/file.mp3"}
-        
+
         # This would restore the tag from pickled state
         # tag.__setstate__(state)
 
@@ -125,7 +124,7 @@ class TestTagPrettyPrint:
         """Test pprint method."""
         mock_tags = Mock()
         mock_tags.__class__.__name__ = "FLAC"
-        
+
         tag = Tag(mock_tags)
         # pprint should print all tag fields nicely
         # It shouldn't crash
@@ -141,48 +140,46 @@ class TestTagWithRealFiles:
     """Integration tests with real audio files (if available)."""
 
     @pytest.mark.skipif(
-        not music_test_folder().exists(),
-        reason="Test data not available"
+        not music_test_folder().exists(), reason="Test data not available"
     )
     def test_tag_from_real_mp3(self):
         """Test creating Tag from a real MP3 file."""
         test_dir = music_test_folder()
-        
+
         # Find an MP3 file
         mp3_files = list(test_dir.rglob("*.mp3"))
         if mp3_files:
             from dap_db_manager.tagging import tag
-            
+
             # Try to read a real file
             test_file = str(mp3_files[0])
             try:
                 tags = tag.read(test_file)
                 if tags:
                     # Verify it's a Tag instance
-                    assert hasattr(tags, 'get')
-                    assert hasattr(tags, 'get_string')
+                    assert hasattr(tags, "get")
+                    assert hasattr(tags, "get_string")
             except Exception:
                 # File might be corrupted (which is fine for testing)
                 pass
 
     @pytest.mark.skipif(
-        not music_test_folder().exists(),
-        reason="Test data not available"
+        not music_test_folder().exists(), reason="Test data not available"
     )
     def test_tag_from_real_flac(self):
         """Test creating Tag from a real FLAC file."""
         test_dir = music_test_folder()
-        
+
         # Find a FLAC file
         flac_files = list(test_dir.rglob("*.flac"))
         if flac_files:
             from dap_db_manager.tagging import tag
-            
+
             test_file = str(flac_files[0])
             try:
                 tags = tag.read(test_file)
                 if tags:
-                    assert hasattr(tags, 'get')
+                    assert hasattr(tags, "get")
             except Exception:
                 pass
 
@@ -194,9 +191,9 @@ class TestTagFieldAccess:
         """Test that Tag supports standard fields."""
         mock_tags = Mock()
         mock_tags.__class__.__name__ = "MP3"
-        
+
         tag = Tag(mock_tags)
-        
+
         # Standard fields that should be supported:
         # artist, album, title, albumartist, genre, date, etc.
         # The exact behavior depends on the tag_mapping
@@ -210,7 +207,7 @@ class TestTagModification:
         mock_tags = Mock()
         mock_tags.__class__.__name__ = "FLAC"
         mock_tags.__setitem__ = Mock()
-        
+
         tag = Tag(mock_tags)
         # Modifying a tag field
         # tag["artist"] = ["New Artist"]
@@ -220,7 +217,7 @@ class TestTagModification:
         mock_tags = Mock()
         mock_tags.__class__.__name__ = "MP3"
         mock_tags.__delitem__ = Mock()
-        
+
         tag = Tag(mock_tags)
         # Deleting a tag field
         # del tag["comment"]

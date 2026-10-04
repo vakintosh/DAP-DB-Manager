@@ -122,7 +122,13 @@ def extract_peaks(
     ]
 
     with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as proc:
-        stdout, stderr = proc.communicate(timeout=60)
+        try:
+            stdout, stderr = proc.communicate(timeout=300)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.communicate()
+            raise RuntimeError(f"ffmpeg timed out decoding {path}")
+
         if proc.returncode != 0:
             err_msg = stderr.decode("utf-8", errors="ignore") if stderr else ""
             raise RuntimeError(f"ffmpeg failed ({proc.returncode}): {err_msg}")

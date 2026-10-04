@@ -1,8 +1,6 @@
 """Tests for mount detector functionality."""
 
 import pytest
-from pathlib import Path
-from unittest.mock import Mock, patch, MagicMock
 from dap_db_manager.database.mount_detector import MountDetector, MountInfo
 
 
@@ -15,7 +13,7 @@ class TestMountDetector:
         notation, path = MountDetector.extract_mount_prefix("/<HDD0>/Music/song.mp3")
         assert notation == "/<HDD0>"
         assert path == "/Music/song.mp3"
-        
+
         # Test without mount notation
         notation2, path2 = MountDetector.extract_mount_prefix("/Music/song.mp3")
         assert notation2 is None
@@ -37,7 +35,7 @@ class TestMountInfo:
         mount = MountInfo(
             notation="/<HDD0>",
             count=100,
-            sample_paths=["/Music/song1.mp3", "/Music/song2.mp3"]
+            sample_paths=["/Music/song1.mp3", "/Music/song2.mp3"],
         )
         assert mount.notation == "/<HDD0>"
         assert mount.count == 100

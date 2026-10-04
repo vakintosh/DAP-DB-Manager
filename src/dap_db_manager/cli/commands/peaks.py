@@ -41,12 +41,15 @@ def cmd_peaks(args: argparse.Namespace) -> int:
             else (music_dir / ".rockbox" / "soulectionpod" / "peaks")
         )
 
+        dap_root_arg = cast(str | Path | None, getattr(args, "dap_root", None))
+        dap_root = Path(dap_root_arg) if dap_root_arg is not None else None
         jobs = cast(int | None, getattr(args, "jobs", None))
         force = bool(getattr(args, "force", False))
 
         total, generated, skipped = generate_peaks_for_library(
             music_dir=music_dir,
             output_dir=output_dir,
+            dap_root=dap_root,
             jobs=jobs,
             force=force,
         )

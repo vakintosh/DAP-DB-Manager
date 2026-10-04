@@ -176,8 +176,8 @@ def test_generate_peaks_for_library_with_tracks(tmp_path: Path) -> None:
     assert (2, 2) in progress_calls
 
     # Verify sidecar files created
-    f1 = out_dir / peaks_filename_for_path("artist1/song1.wav")
-    f2 = out_dir / peaks_filename_for_path("artist2/song2.wav")
+    f1 = out_dir / peaks_filename_for_path("music/artist1/song1.wav")
+    f2 = out_dir / peaks_filename_for_path("music/artist2/song2.wav")
     assert f1.is_file()
     assert f2.is_file()
 
@@ -220,7 +220,7 @@ def test_cmd_peaks_generate_cli(tmp_path: Path) -> None:
     exit_code = cmd_peaks(args)
     assert exit_code == 0
 
-    expected = out_dir / peaks_filename_for_path("track.wav")
+    expected = out_dir / peaks_filename_for_path("music/track.wav")
     assert expected.is_file()
 
 
@@ -240,7 +240,7 @@ def test_cmd_peaks_generate_default_output(tmp_path: Path) -> None:
     assert exit_code == 0
 
     default_out = music_dir / ".rockbox" / "soulectionpod" / "peaks"
-    expected = default_out / peaks_filename_for_path("track.wav")
+    expected = default_out / peaks_filename_for_path("music/track.wav")
     assert expected.is_file()
 
 
@@ -468,3 +468,46 @@ def test_cmd_update_invokes_peaks_when_enabled(tmp_path: Path) -> None:
         cmd_update(args)
 
     assert mock_gen_peaks.called
+
+
+def test_dap_root_relative_path_resolution(tmp_path: Path) -> None:
+    # Test that dap_root is used for relative paths
+    dap_root = tmp_path / "dap"
+    music_dir = dap_root / "Music"
+    music_dir.mkdir(parents=True)
+    _create_wav(music_dir / "track.wav", duration_s=0.1)
+
+    out_dir = tmp_path / "peaks"
+
+    total, generated, skipped = generate_peaks_for_library(
+        music_dir=music_dir,
+        output_dir=out_dir,
+        dap_root=dap_root,
+        jobs=1,
+    )
+
+    assert total == 1
+    files = list(out_dir.glob("*"))
+    assert len(files) == 1
+    expected = peaks_filename_for_path("Music/track.wav")
+    assert files[0].name == expected
+
+
+def test_music_dir_name_prepend(tmp_path: Path) -> None:
+    # Test that when dap_root is None, and music_dir is "Music", "music/" is prepended
+    music_dir = tmp_path / "music"
+    music_dir.mkdir()
+    _create_wav(music_dir / "track.wav", duration_s=0.1)
+
+    out_dir = tmp_path / "peaks"
+
+    total, generated, skipped = generate_peaks_for_library(
+        music_dir=music_dir,
+        output_dir=out_dir,
+        dap_root=None,
+        jobs=1,
+    )
+    assert total == 1
+    expected = peaks_filename_for_path("music/track.wav")
+    files = list(out_dir.glob("*"))
+    assert files[0].name == expected

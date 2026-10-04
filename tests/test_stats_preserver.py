@@ -159,8 +159,13 @@ class TestPreserveStatsIntegration:
         # __main__ guard. Use the installed console script from this venv.
         ddm = Path(sys.executable).parent / "ddm"
         cmd = [
-            str(ddm), "generate",
-            "--music-dir", str(music_dir), "--output", str(out_dir), *extra_args,
+            str(ddm),
+            "generate",
+            "--music-dir",
+            str(music_dir),
+            "--output",
+            str(out_dir),
+            *extra_args,
         ]
         return subprocess.run(cmd, capture_output=True, text=True, cwd=REPO_ROOT)
 
@@ -179,7 +184,12 @@ class TestPreserveStatsIntegration:
                 e["rating"] = (i % 5) + 1
                 e["playtime"] = 1000 + i
                 e["lastplayed"] = 5000 + i
-                expected[str(e.path).lower()] = (10 + i, (i % 5) + 1, 1000 + i, 5000 + i)
+                expected[str(e.path).lower()] = (
+                    10 + i,
+                    (i % 5) + 1,
+                    1000 + i,
+                    5000 + i,
+                )
         DatabaseIO.write(db.tagfiles, db.index, str(out), callback=lambda *a, **k: None)
         assert expected, "fixture produced no entries to inject into"
 
@@ -222,9 +232,12 @@ class TestPreserveStatsIntegration:
             e["playcount"] = 99
         DatabaseIO.write(db.tagfiles, db.index, str(out), callback=lambda *a, **k: None)
 
-        assert self._generate(
-            music_test_folder(), out, ("--no-preserve-stats",)
-        ).returncode == 0
+        assert (
+            self._generate(
+                music_test_folder(), out, ("--no-preserve-stats",)
+            ).returncode
+            == 0
+        )
 
         rebuilt = Database.read(str(out), callback=lambda *a, **k: None)
         assert all(e["playcount"] == 0 for e in rebuilt.index.entries)
@@ -233,7 +246,8 @@ class TestPreserveStatsIntegration:
         out = tmp_path / "db"
         out.mkdir()
         result = self._generate(
-            music_test_folder(), out,
+            music_test_folder(),
+            out,
             ("--no-preserve-stats", "--preserve-stats-from", str(out)),
         )
         assert result.returncode != 0

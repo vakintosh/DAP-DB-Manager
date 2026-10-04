@@ -5,7 +5,12 @@ import tempfile
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-from dap_db_manager.config import Config, get_config_dir, get_config_path, get_optimal_cache_memory_mb
+from dap_db_manager.config import (
+    Config,
+    get_config_dir,
+    get_config_path,
+    get_optimal_cache_memory_mb,
+)
 
 
 class TestConfigHelperFunctions:
@@ -26,7 +31,7 @@ class TestConfigHelperFunctions:
 
     def test_get_optimal_cache_memory_mb_no_psutil(self):
         """Test optimal cache memory when psutil is not available."""
-        with patch('dap_db_manager.config.psutil_module', None):
+        with patch("dap_db_manager.config.psutil_module", None):
             memory = get_optimal_cache_memory_mb()
             assert memory == 512  # Fallback value
 
@@ -34,7 +39,7 @@ class TestConfigHelperFunctions:
         """Test optimal cache memory with < 4GB RAM."""
         mock_memory = MagicMock()
         mock_memory.total = 2 * 1024 * 1024 * 1024  # 2GB
-        with patch('dap_db_manager.config.psutil_module') as mock_psutil:
+        with patch("dap_db_manager.config.psutil_module") as mock_psutil:
             mock_psutil.virtual_memory.return_value = mock_memory
             memory = get_optimal_cache_memory_mb()
             assert memory == 256
@@ -43,7 +48,7 @@ class TestConfigHelperFunctions:
         """Test optimal cache memory with 4-8GB RAM."""
         mock_memory = MagicMock()
         mock_memory.total = 6 * 1024 * 1024 * 1024  # 6GB
-        with patch('dap_db_manager.config.psutil_module') as mock_psutil:
+        with patch("dap_db_manager.config.psutil_module") as mock_psutil:
             mock_psutil.virtual_memory.return_value = mock_memory
             memory = get_optimal_cache_memory_mb()
             assert memory == 512
@@ -52,7 +57,7 @@ class TestConfigHelperFunctions:
         """Test optimal cache memory with 8-16GB RAM."""
         mock_memory = MagicMock()
         mock_memory.total = 12 * 1024 * 1024 * 1024  # 12GB
-        with patch('dap_db_manager.config.psutil_module') as mock_psutil:
+        with patch("dap_db_manager.config.psutil_module") as mock_psutil:
             mock_psutil.virtual_memory.return_value = mock_memory
             memory = get_optimal_cache_memory_mb()
             assert memory == 1024
@@ -61,14 +66,14 @@ class TestConfigHelperFunctions:
         """Test optimal cache memory with > 16GB RAM."""
         mock_memory = MagicMock()
         mock_memory.total = 32 * 1024 * 1024 * 1024  # 32GB
-        with patch('dap_db_manager.config.psutil_module') as mock_psutil:
+        with patch("dap_db_manager.config.psutil_module") as mock_psutil:
             mock_psutil.virtual_memory.return_value = mock_memory
             memory = get_optimal_cache_memory_mb()
             assert memory == 2048
 
     def test_get_optimal_cache_memory_mb_exception(self):
         """Test optimal cache memory when exception occurs."""
-        with patch('dap_db_manager.config.psutil_module') as mock_psutil:
+        with patch("dap_db_manager.config.psutil_module") as mock_psutil:
             mock_psutil.virtual_memory.side_effect = Exception("Mock error")
             memory = get_optimal_cache_memory_mb()
             assert memory == 512  # Fallback value
@@ -85,7 +90,7 @@ class TestConfigLoadSave:
             config = Config()
             config.data = config.DEFAULT_CONFIG.copy()
             config.config_path = config_path
-            
+
             result = config.load()
             assert result is False
             # Should have default values
@@ -96,7 +101,7 @@ class TestConfigLoadSave:
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "corrupted.toml"
             config_path.write_text("this is not valid toml {{{}}")
-            
+
             config = Config()
             config.config_path = config_path
             result = config.load()
@@ -106,18 +111,18 @@ class TestConfigLoadSave:
         """Test successful config loading."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "config.toml"
-            
+
             # Create and save a config
             config1 = Config()
             config1.config_path = config_path
             config1.set_window_size(1024, 768)
             config1.save()
-            
+
             # Load in new instance
             config2 = Config()
             config2.config_path = config_path
             result = config2.load()
-            
+
             assert result is True
             assert config2.get_window_size() == (1024, 768)
 
@@ -128,7 +133,7 @@ class TestConfigLoadSave:
             config = Config()
             config.config_path = config_path
             config._dirty = False
-            
+
             result = config.save()
             assert result is True
             assert not config_path.exists()  # File not created
@@ -140,8 +145,8 @@ class TestConfigLoadSave:
             config = Config()
             config.config_path = config_path
             config._dirty = True
-            
-            with patch('dap_db_manager.config.tomli_w', None):
+
+            with patch("dap_db_manager.config.tomli_w", None):
                 result = config.save()
                 assert result is False
 
@@ -150,7 +155,7 @@ class TestConfigLoadSave:
         config = Config()
         config.config_path = Path("/nonexistent_directory/config.toml")
         config._dirty = True
-        
+
         result = config.save()
         assert result is False
 
@@ -161,7 +166,7 @@ class TestConfigLoadSave:
             config = Config()
             config.config_path = config_path
             config._dirty = False
-            
+
             result = config.save(force=True)
             assert result is True
             assert config_path.exists()
@@ -204,7 +209,7 @@ class TestConfigDirtyFlag:
             config = Config()
             config.config_path = config_path
             config.set_window_size(1024, 768)
-            
+
             assert config.is_dirty()
             config.save()
             assert not config.is_dirty()
@@ -355,7 +360,7 @@ class TestConfigDatabaseSettings:
         config = Config()
         if "database" in config.data:
             del config.data["database"]
-        
+
         config.set_database_version(16)
         assert "database" in config.data
         assert config.data["database"]["version"] == 16
@@ -390,7 +395,7 @@ class TestConfigDatabaseSettings:
         config = Config()
         if "database" in config.data:
             del config.data["database"]
-        
+
         config.set_mount_notation("/<MMC0>")
         assert "database" in config.data
         assert config.data["database"]["mount_notation"] == "/<MMC0>"
@@ -403,12 +408,17 @@ class TestConfigMountNotationAutoDetect:
     def test_auto_detect_mount_notation_success(self):
         """Test successful auto-detection."""
         config = Config()
-        
-        with patch('dap_db_manager.database.mount_detector.MountDetector') as mock_detector:
-            mock_detector.detect_from_device_storage.return_value = ["/<HDD0>", "/<MMC0>"]
-            
+
+        with patch(
+            "dap_db_manager.database.mount_detector.MountDetector"
+        ) as mock_detector:
+            mock_detector.detect_from_device_storage.return_value = [
+                "/<HDD0>",
+                "/<MMC0>",
+            ]
+
             result = config.auto_detect_mount_notation("/path/to/device")
-            
+
             assert result == "/<HDD0>"
             assert config.get_mount_notation() == "/<HDD0>"
             assert config.is_mount_notation_configured()
@@ -417,15 +427,19 @@ class TestConfigMountNotationAutoDetect:
         """Test auto-detection with callback."""
         config = Config()
         callback_messages = []
-        
+
         def callback(msg):
             callback_messages.append(msg)
-        
-        with patch('dap_db_manager.database.mount_detector.MountDetector') as mock_detector:
+
+        with patch(
+            "dap_db_manager.database.mount_detector.MountDetector"
+        ) as mock_detector:
             mock_detector.detect_from_device_storage.return_value = ["/<HDD0>"]
-            
-            result = config.auto_detect_mount_notation("/path/to/device", callback=callback)
-            
+
+            result = config.auto_detect_mount_notation(
+                "/path/to/device", callback=callback
+            )
+
             assert result == "/<HDD0>"
             assert len(callback_messages) >= 2  # Should have detection messages
 
@@ -433,15 +447,23 @@ class TestConfigMountNotationAutoDetect:
         """Test auto-detection with multiple mounts."""
         config = Config()
         callback_messages = []
-        
+
         def callback(msg):
             callback_messages.append(msg)
-        
-        with patch('dap_db_manager.database.mount_detector.MountDetector') as mock_detector:
-            mock_detector.detect_from_device_storage.return_value = ["/<HDD0>", "/<MMC0>", "/<USB0>"]
-            
-            result = config.auto_detect_mount_notation("/path/to/device", callback=callback)
-            
+
+        with patch(
+            "dap_db_manager.database.mount_detector.MountDetector"
+        ) as mock_detector:
+            mock_detector.detect_from_device_storage.return_value = [
+                "/<HDD0>",
+                "/<MMC0>",
+                "/<USB0>",
+            ]
+
+            result = config.auto_detect_mount_notation(
+                "/path/to/device", callback=callback
+            )
+
             assert result == "/<HDD0>"
             # Should mention additional mounts
             assert any("Additional mounts" in msg for msg in callback_messages)
@@ -450,15 +472,19 @@ class TestConfigMountNotationAutoDetect:
         """Test auto-detection when no mounts found."""
         config = Config()
         callback_messages = []
-        
+
         def callback(msg):
             callback_messages.append(msg)
-        
-        with patch('dap_db_manager.database.mount_detector.MountDetector') as mock_detector:
+
+        with patch(
+            "dap_db_manager.database.mount_detector.MountDetector"
+        ) as mock_detector:
             mock_detector.detect_from_device_storage.return_value = []
-            
-            result = config.auto_detect_mount_notation("/path/to/device", callback=callback)
-            
+
+            result = config.auto_detect_mount_notation(
+                "/path/to/device", callback=callback
+            )
+
             assert result == "/<HDD0>"  # Default fallback
             assert config.get_mount_notation() == "/<HDD0>"
             # Should have warning message
@@ -468,15 +494,21 @@ class TestConfigMountNotationAutoDetect:
         """Test auto-detection when exception occurs."""
         config = Config()
         callback_messages = []
-        
+
         def callback(msg):
             callback_messages.append(msg)
-        
-        with patch('dap_db_manager.database.mount_detector.MountDetector') as mock_detector:
-            mock_detector.detect_from_device_storage.side_effect = Exception("Mock error")
-            
-            result = config.auto_detect_mount_notation("/path/to/device", callback=callback)
-            
+
+        with patch(
+            "dap_db_manager.database.mount_detector.MountDetector"
+        ) as mock_detector:
+            mock_detector.detect_from_device_storage.side_effect = Exception(
+                "Mock error"
+            )
+
+            result = config.auto_detect_mount_notation(
+                "/path/to/device", callback=callback
+            )
+
             assert result == "/<HDD0>"  # Default fallback
             # Should have error message
             assert any("failed" in msg for msg in callback_messages)
@@ -490,9 +522,9 @@ class TestConfigMergeAndFilter:
         config = Config()
         base = {"key1": "value1"}
         override = {"key2": "value2"}
-        
+
         config._merge_config(base, override)
-        
+
         assert base == {"key1": "value1", "key2": "value2"}
 
     def test_merge_config_nested(self):
@@ -500,9 +532,9 @@ class TestConfigMergeAndFilter:
         config = Config()
         base = {"section": {"key1": "value1"}}
         override = {"section": {"key2": "value2"}}
-        
+
         config._merge_config(base, override)
-        
+
         assert base == {"section": {"key1": "value1", "key2": "value2"}}
 
     def test_merge_config_override(self):
@@ -510,18 +542,18 @@ class TestConfigMergeAndFilter:
         config = Config()
         base = {"key": "old_value"}
         override = {"key": "new_value"}
-        
+
         config._merge_config(base, override)
-        
+
         assert base == {"key": "new_value"}
 
     def test_filter_none_values_simple(self):
         """Test filtering None values."""
         config = Config()
         data = {"key1": "value1", "key2": None, "key3": "value3"}
-        
+
         result = config._filter_none_values(data)
-        
+
         assert result == {"key1": "value1", "key3": "value3"}
 
     def test_filter_none_values_nested(self):
@@ -531,36 +563,21 @@ class TestConfigMergeAndFilter:
             "section": {
                 "key1": "value1",
                 "key2": None,
-                "nested": {
-                    "key3": None,
-                    "key4": "value4"
-                }
+                "nested": {"key3": None, "key4": "value4"},
             }
         }
-        
+
         result = config._filter_none_values(data)
-        
-        assert result == {
-            "section": {
-                "key1": "value1",
-                "nested": {
-                    "key4": "value4"
-                }
-            }
-        }
+
+        assert result == {"section": {"key1": "value1", "nested": {"key4": "value4"}}}
 
     def test_filter_none_values_empty_dict(self):
         """Test that empty dicts are removed after filtering."""
         config = Config()
-        data = {
-            "section": {
-                "key1": None
-            },
-            "other": "value"
-        }
-        
+        data = {"section": {"key1": None}, "other": "value"}
+
         result = config._filter_none_values(data)
-        
+
         # Empty section should be removed
         assert result == {"other": "value"}
 
@@ -572,7 +589,7 @@ class TestConfigPersistence:
         """Test that all settings persist across save/load."""
         with tempfile.TemporaryDirectory() as tmpdir:
             config_path = Path(tmpdir) / "config.toml"
-            
+
             # Set all types of settings
             config1 = Config()
             config1.config_path = config_path
@@ -583,12 +600,12 @@ class TestConfigPersistence:
             config1.set_database_version(16)
             config1.set_mount_notation("/<HDD0>")
             config1.save()
-            
+
             # Load in new instance
             config2 = Config()
             config2.config_path = config_path
             config2.load()
-            
+
             assert config2.get_window_size() == (1024, 768)
             assert config2.get_window_position() == (100, 200)
             assert config2.get_last_music_dir() == "/music"

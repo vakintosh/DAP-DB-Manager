@@ -460,6 +460,12 @@ def parse_args() -> tuple[argparse.ArgumentParser, argparse.Namespace]:
     )
     peaks_gen_opt = peaks_generate_parser.add_argument_group("Options")
     peaks_gen_opt.add_argument(
+        "--dap-root",
+        type=Path,
+        default=None,
+        help="Root directory of the DAP for relative path calculation",
+    )
+    peaks_gen_opt.add_argument(
         "-o",
         "--output",
         type=Path,
