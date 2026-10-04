@@ -92,6 +92,10 @@ def write_peaks_file(
     path.parent.mkdir(parents=True, exist_ok=True)
     data = serialize_peaks(duration_ms=duration_ms, peaks=peaks)
     temp_path = path.with_suffix(".tmp")
-    with temp_path.open("wb") as f:
-        _ = f.write(data)
-    _ = temp_path.replace(path)
+    try:
+        with temp_path.open("wb") as f:
+            _ = f.write(data)
+        _ = temp_path.replace(path)
+    except Exception:
+        temp_path.unlink(missing_ok=True)
+        raise

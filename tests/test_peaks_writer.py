@@ -148,3 +148,22 @@ def test_write_peaks_file_str_path(tmp_path: Path) -> None:
     unpacked_duration, unpacked_peaks = deserialize_peaks(target_file.read_bytes())
     assert unpacked_duration == duration_ms
     assert unpacked_peaks == [10] * PEAKS_NUM_BUCKETS
+
+
+def test_write_peaks_file_cleanup_on_exception(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target_file = tmp_path / "fail.peaks"
+    temp_file = target_file.with_suffix(".tmp")
+
+    def mock_replace(_self: Path, _target: Path) -> Path:
+        assert temp_file.exists()
+        raise OSError("Disk failure during replace")
+
+    monkeypatch.setattr(Path, "replace", mock_replace)
+
+    with pytest.raises(OSError, match="Disk failure during replace"):
+        write_peaks_file(target_file, 5000, [0] * PEAKS_NUM_BUCKETS)
+
+    assert not temp_file.exists()
+    assert not target_file.exists()
