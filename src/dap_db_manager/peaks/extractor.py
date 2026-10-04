@@ -28,29 +28,39 @@ def extract_peaks_from_pcm(
     if total_samples == 0:
         return [0] * num_buckets
 
-    samples_per_bucket = max(1, total_samples // num_buckets)
     peaks: list[int] = []
 
-    for i in range(num_buckets):
-        start_sample = i * samples_per_bucket
-        end_sample = min(total_samples, (i + 1) * samples_per_bucket)
-        if start_sample >= total_samples:
-            peaks.append(0)
-            continue
+    if total_samples < num_buckets:
+        for i in range(num_buckets):
+            if i >= total_samples:
+                peaks.append(0)
+                continue
+            chunk = pcm_bytes[i * BYTES_PER_SAMPLE : (i + 1) * BYTES_PER_SAMPLE]
+            val = abs(struct.unpack("<h", chunk)[0])
+            peaks.append(min(255, int((val * 255) / 32767)))
+    else:
+        for i in range(num_buckets):
+            start_sample = (i * total_samples) // num_buckets
+            end_sample = ((i + 1) * total_samples) // num_buckets
+            if start_sample >= total_samples or start_sample >= end_sample:
+                peaks.append(0)
+                continue
 
-        chunk = pcm_bytes[
-            start_sample * BYTES_PER_SAMPLE : end_sample * BYTES_PER_SAMPLE
-        ]
-        num_chunk_samples = len(chunk) // BYTES_PER_SAMPLE
-        if num_chunk_samples == 0:
-            peaks.append(0)
-            continue
+            chunk = pcm_bytes[
+                start_sample * BYTES_PER_SAMPLE : end_sample * BYTES_PER_SAMPLE
+            ]
+            num_chunk_samples = len(chunk) // BYTES_PER_SAMPLE
+            if num_chunk_samples == 0:
+                peaks.append(0)
+                continue
 
-        chunk_samples: tuple[int, ...] = struct.unpack(f"<{num_chunk_samples}h", chunk)
-        max_val = max(abs(s) for s in chunk_samples)
-        # Quantize 0..32767 to 0..255
-        norm_peak = min(255, int((max_val * 255) / 32767))
-        peaks.append(norm_peak)
+            chunk_samples: tuple[int, ...] = struct.unpack(
+                f"<{num_chunk_samples}h", chunk
+            )
+            max_val = max(abs(s) for s in chunk_samples)
+            # Quantize 0..32767 to 0..255
+            norm_peak = min(255, int((max_val * 255) / 32767))
+            peaks.append(norm_peak)
 
     # Dynamic track normalization: scale so track max peak is at least 200/255 if not dead silent
     max_track_peak = max(peaks) if peaks else 0
@@ -111,11 +121,11 @@ def extract_peaks(
         "-",
     ]
 
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-    stdout, stderr = proc.communicate()
-    if proc.returncode != 0:
-        err_msg = stderr.decode("utf-8", errors="ignore") if stderr else ""
-        raise RuntimeError(f"ffmpeg failed ({proc.returncode}): {err_msg}")
+    with subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as proc:
+        stdout, stderr = proc.communicate(timeout=60)
+        if proc.returncode != 0:
+            err_msg = stderr.decode("utf-8", errors="ignore") if stderr else ""
+            raise RuntimeError(f"ffmpeg failed ({proc.returncode}): {err_msg}")
 
     peaks = extract_peaks_from_pcm(stdout, PEAKS_NUM_BUCKETS)
     if resolved_duration_ms == 0:
