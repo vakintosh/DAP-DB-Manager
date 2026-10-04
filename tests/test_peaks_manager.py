@@ -487,6 +487,8 @@ def test_dap_root_relative_path_resolution(tmp_path: Path) -> None:
     )
 
     assert total == 1
+    assert generated == 1
+    assert skipped == 0
     files = list(out_dir.glob("*"))
     assert len(files) == 1
     expected = peaks_filename_for_path("Music/track.wav")
@@ -508,6 +510,8 @@ def test_music_dir_name_prepend(tmp_path: Path) -> None:
         jobs=1,
     )
     assert total == 1
+    assert generated == 1
+    assert skipped == 0
     expected = peaks_filename_for_path("music/track.wav")
     files = list(out_dir.glob("*"))
     assert files[0].name == expected

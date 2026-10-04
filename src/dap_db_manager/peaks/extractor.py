@@ -126,7 +126,7 @@ def extract_peaks(
             stdout, stderr = proc.communicate(timeout=300)
         except subprocess.TimeoutExpired:
             proc.kill()
-            proc.communicate()
+            _ = proc.communicate()
             raise RuntimeError(f"ffmpeg timed out decoding {path}")
 
         if proc.returncode != 0:

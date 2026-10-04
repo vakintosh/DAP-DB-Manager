@@ -117,7 +117,10 @@ def generate_peaks_for_library(
                 except ValueError:
                     rel = p.name
 
-                if not rel.lower().startswith("music/") and music_path.name.lower() == "music":
+                if (
+                    not rel.lower().startswith("music/")
+                    and music_path.name.lower() == "music"
+                ):
                     rel = f"music/{rel}"
 
                 tracks.append((p, rel))
