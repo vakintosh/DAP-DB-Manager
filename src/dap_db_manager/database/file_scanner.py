@@ -6,6 +6,7 @@ to bypass the GIL for CPU-intensive tag parsing.
 """
 
 import os
+import unicodedata
 from pathlib import Path
 import sys
 import logging
@@ -220,7 +221,14 @@ class FileScanner:
         """
         # Use absolute path but don't resolve() to preserve case from filesystem
         path_obj = Path(path).absolute()
-        absolute_path = str(path_obj)
+        # macOS always hands decomposed (NFD) Unicode for paths read off a
+        # FAT/exFAT volume, regardless of what is actually stored on disk,
+        # while Rockbox's own FAT code reads/compares paths byte-exact in
+        # precomposed (NFC) form (file_internal.c strcasecmp). Normalizing
+        # here -- the single choke point every path flows through on its way
+        # into the cache and the generated entry -- stops NFD from ever being
+        # written into the database again, on both generate and update.
+        absolute_path = unicodedata.normalize("NFC", str(path_obj))
         lowerpath = absolute_path.lower()
 
         if size is None or mtime is None:
@@ -415,7 +423,11 @@ class FileScanner:
                                     in self.supported_extensions
                                 ):
                                     stat_info = entry.stat(follow_symlinks=False)
-                                    abs_path = str(Path(entry.path).absolute())
+                                    # Normalize to NFC here too -- see the
+                                    # matching comment in _add_file_internal.
+                                    abs_path = unicodedata.normalize(
+                                        "NFC", str(Path(entry.path).absolute())
+                                    )
                                     metadata[abs_path] = (
                                         stat_info.st_size,
                                         stat_info.st_mtime,
