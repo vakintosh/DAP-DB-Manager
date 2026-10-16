@@ -29,3 +29,6 @@ test_automation_env
 # Local planning and spec artifacts
 .superpowers/
 docs/superpowers/
+
+# Local-only learning/onboarding docs (not for public repo)
+docs/learn/
