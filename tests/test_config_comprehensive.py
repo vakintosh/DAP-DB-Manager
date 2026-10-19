@@ -16,12 +16,30 @@ from dap_db_manager.config import (
 class TestConfigHelperFunctions:
     """Test module-level helper functions."""
 
-    def test_get_config_dir_creates_directory(self):
-        """Test that get_config_dir creates the .ddm directory."""
+    def test_get_config_dir_does_not_create_directory(self, tmp_path, monkeypatch):
+        """get_config_dir() must be a pure lookup: no side-effect mkdir.
+
+        Regression test for issue #25 — constructing Config() on a read-only
+        $HOME used to crash every command because the directory lookup
+        itself tried to create the directory.
+        """
+        monkeypatch.delenv("DDM_CONFIG_DIR", raising=False)
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+
         config_dir = get_config_dir()
-        assert config_dir.exists()
-        assert config_dir.name == ".ddm"
-        assert config_dir.is_dir()
+
+        assert config_dir == tmp_path / ".ddm"
+        assert not config_dir.exists()
+
+    def test_get_config_dir_honors_env_override(self, tmp_path, monkeypatch):
+        """DDM_CONFIG_DIR, when set, overrides the default ~/.ddm location."""
+        custom_dir = tmp_path / "custom-config-home"
+        monkeypatch.setenv("DDM_CONFIG_DIR", str(custom_dir))
+
+        config_dir = get_config_dir()
+
+        assert config_dir == custom_dir
+        assert not config_dir.exists()
 
     def test_get_config_path(self):
         """Test that get_config_path returns correct path."""
@@ -170,6 +188,73 @@ class TestConfigLoadSave:
             result = config.save(force=True)
             assert result is True
             assert config_path.exists()
+
+    def test_save_creates_missing_parent_directory(self):
+        """save() lazily creates the config directory if it is missing.
+
+        This is the other half of the issue #25 fix: directory creation is
+        deferred from lookup time (crash on read-only $HOME) to the moment a
+        write is actually attempted.
+        """
+        with tempfile.TemporaryDirectory() as tmpdir:
+            config_dir = Path(tmpdir) / "not-yet-created"
+            config_path = config_dir / "config.toml"
+            config = Config()
+            config.config_path = config_path
+            config._dirty = True
+
+            assert not config_dir.exists()
+            result = config.save()
+
+            assert result is True
+            assert config_path.exists()
+
+
+class TestConfigConstructorPath:
+    """Test Config(path=...) constructor override (issue #25)."""
+
+    def test_constructor_accepts_explicit_path(self):
+        """Config(path) should use the given path instead of the default."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            custom_path = Path(tmpdir) / "custom.toml"
+            config = Config(custom_path)
+            assert config.config_path == custom_path
+
+    def test_constructor_defaults_to_get_config_path(self):
+        """Config() with no argument still defaults to get_config_path()."""
+        config = Config()
+        assert config.config_path == get_config_path()
+
+    def test_constructor_loads_from_explicit_path(self):
+        """Config(path) loads values from the given path on construction."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            custom_path = Path(tmpdir) / "custom.toml"
+            seed = Config()
+            seed.config_path = custom_path
+            seed.set_window_size(321, 654)
+            seed.save()
+
+            loaded = Config(custom_path)
+            assert loaded.get_window_size() == (321, 654)
+
+    def test_constructor_does_not_crash_on_readonly_home(self, tmp_path, monkeypatch):
+        """Constructing Config() must not crash when $HOME is not writable.
+
+        Regression test for issue #25: every ddm command constructed a
+        Config() before dispatch, and the old get_config_dir() tried to
+        mkdir the config directory unconditionally.
+        """
+        readonly_home = tmp_path / "ro-home"
+        readonly_home.mkdir()
+        readonly_home.chmod(0o555)
+        monkeypatch.delenv("DDM_CONFIG_DIR", raising=False)
+        monkeypatch.setattr(Path, "home", lambda: readonly_home)
+
+        try:
+            config = Config()
+            assert config.get_window_size() == (800, 600)
+        finally:
+            readonly_home.chmod(0o755)
 
 
 class TestConfigDirtyFlag:

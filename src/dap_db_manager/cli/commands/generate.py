@@ -201,7 +201,7 @@ def cmd_generate(args: argparse.Namespace) -> None:
             sys.exit(ExitCode.INVALID_CONFIG)
 
         logging.info("Loading configuration from: %s", config_path)
-        config = Config()
+        config = Config(config_path)
         config.load()
 
         # Apply format settings from config

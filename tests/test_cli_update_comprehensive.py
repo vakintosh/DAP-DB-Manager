@@ -132,6 +132,23 @@ class TestUpdateConfiguration:
 
         config.auto_detect_mount_notation.assert_called_once()
 
+    def test_custom_config_path_forwarded(
+        self, tmp_path, mock_args, mock_db_class, mock_config_class
+    ):
+        """Regression test for issue #25: -c/--config must reach Config()."""
+        Path(mock_args.db_dir).mkdir(parents=True)
+        Path(mock_args.music_dir).mkdir(parents=True)
+
+        config_file = tmp_path / "custom_config.toml"
+        config_file.touch()
+        mock_args.config = str(config_file)
+
+        with pytest.raises(SystemExit) as exc:
+            cmd_update(mock_args)
+        assert exc.value.code == ExitCode.SUCCESS
+
+        mock_config_class.assert_any_call(Path(config_file))
+
     def test_db_loading_failure(self, tmp_path, mock_args, mock_db_class):
         """Test handling of database loading failure."""
         Path(mock_args.db_dir).mkdir(parents=True)

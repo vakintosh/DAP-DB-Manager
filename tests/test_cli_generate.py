@@ -157,6 +157,12 @@ class TestGenerateConfiguration:
 
         config_instance = mock_config_class.return_value
         assert config_instance.load.called
+        # Regression test for issue #25: the custom --config path must
+        # actually be forwarded to Config(), not silently ignored in favor
+        # of the default ~/.ddm location.
+        from pathlib import Path as _Path
+
+        mock_config_class.assert_any_call(_Path(config_file))
 
     def test_custom_config_not_found(self, mock_args):
         """Test error when custom config file doesn't exist."""

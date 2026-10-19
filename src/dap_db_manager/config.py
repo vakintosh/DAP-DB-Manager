@@ -5,6 +5,7 @@ window positions, and last used directories.
 """
 
 import copy
+import os
 import tomllib
 from pathlib import Path
 from typing import Dict, Any, Tuple, Optional, TYPE_CHECKING
@@ -61,12 +62,19 @@ def get_optimal_cache_memory_mb() -> int:
 def get_config_dir() -> Path:
     """Get the configuration directory.
 
+    This is a pure path lookup — it does **not** create the directory.
+    Creation is deferred to :meth:`Config.save`, the only place a write is
+    actually attempted, so that read-only commands (and a read-only $HOME)
+    never crash just from resolving where the config *would* live.
+
     Returns:
-        Path to config directory (~/.ddm on all platforms)
+        Path to config directory. Defaults to ``~/.ddm``, or the directory
+        named by the ``DDM_CONFIG_DIR`` environment variable if set.
     """
-    config_dir = Path.home() / ".ddm"
-    config_dir.mkdir(parents=True, exist_ok=True)
-    return config_dir
+    env_dir = os.environ.get("DDM_CONFIG_DIR")
+    if env_dir:
+        return Path(env_dir)
+    return Path.home() / ".ddm"
 
 
 def get_config_path() -> Path:
@@ -141,9 +149,16 @@ class Config:
         },
     }
 
-    def __init__(self):
-        """Initialize configuration manager."""
-        self.config_path = get_config_path()
+    def __init__(self, path: Optional[Path] = None):
+        """Initialize configuration manager.
+
+        Args:
+            path: Optional explicit path to the config file (e.g. from the
+                CLI's ``-c/--config`` flag). Defaults to
+                :func:`get_config_path` (``~/.ddm/.rdbm_config.toml``) when
+                not given.
+        """
+        self.config_path = Path(path) if path is not None else get_config_path()
         self.data: Dict[str, Any] = copy.deepcopy(
             self.DEFAULT_CONFIG
         )  # Deep copy to avoid modifying class default
@@ -188,6 +203,9 @@ class Config:
             return False
 
         try:
+            # Lazily create the config directory now that we actually need
+            # to write — not at lookup time (see get_config_dir()).
+            self.config_path.parent.mkdir(parents=True, exist_ok=True)
             # Filter out None values that TOML can't serialize
             config_to_save = self._filter_none_values(self.data)
             with open(self.config_path, "wb") as f:

@@ -78,6 +78,12 @@ def add_global_options(parser_group):
         help="Set logging level (disabled by default)",
     )
     parser_group.add_argument(
+        "-c",
+        "--config",
+        default=None,
+        help="Path to configuration file (default: ~/.ddm/.rdbm_config.toml)",
+    )
+    parser_group.add_argument(
         "--cache-size",
         type=int,
         metavar="SIZE",
@@ -140,7 +146,6 @@ def parse_args() -> tuple[argparse.ArgumentParser, argparse.Namespace]:
         help="Target directory for database files",
     )
     generate_options = generate_parser.add_argument_group("Options")
-    generate_options.add_argument("-c", "--config", help="Path to configuration file")
     generate_options.add_argument(
         "--load-tags",
         type=Path,
@@ -542,7 +547,8 @@ def main():
         setup_logging("critical")
 
     # Initialize cache configuration from user settings
-    config = Config()
+    config_path = Path(args.config) if getattr(args, "config", None) else None
+    config = Config(config_path)
     cache_memory = (
         args.cache_size
         if hasattr(args, "cache_size") and args.cache_size
