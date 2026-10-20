@@ -39,7 +39,8 @@ def cmd_detect_mounts(args: argparse.Namespace) -> None:
         if not mount_notation.startswith("/"):
             mount_notation = "/" + mount_notation
 
-        config = Config()
+        config_path = Path(args.config) if getattr(args, "config", None) else None
+        config = Config(config_path)
         config.set_mount_notation(mount_notation)
         config.save()
 
@@ -93,7 +94,8 @@ def cmd_detect_mounts(args: argparse.Namespace) -> None:
 
         # Save primary mount to config if mounts were detected
         if mounts:
-            config = Config()
+            config_path = Path(args.config) if getattr(args, "config", None) else None
+            config = Config(config_path)
             primary = max(mounts.values(), key=lambda m: m.count)
             config.set_mount_notation(primary.notation)
             config.save()

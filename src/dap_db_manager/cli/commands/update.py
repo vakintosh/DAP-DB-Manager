@@ -145,7 +145,8 @@ def cmd_update(args: argparse.Namespace) -> None:
     # Load configuration and auto-detect mount notation if needed
     from ...config import Config
 
-    config = Config()
+    config_path = Path(args.config) if getattr(args, "config", None) else None
+    config = Config(config_path)
 
     # Auto-detect mount notation on first run if not configured
     if not config.is_mount_notation_configured():
