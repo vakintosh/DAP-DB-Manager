@@ -228,6 +228,15 @@ class TagCache:
             "path",
             "albumartist",
             "performer",
+            # MusicBrainz Picard 3.0+ writes these *in addition to* the
+            # legacy single `&`-joined `artist`/`albumartist` tag: true
+            # multi-value tags carrying each individual artist as its own
+            # list element (issue #32). Without these here, they'd be
+            # silently dropped before a `%<artist>%`/`%<album artist>%`
+            # format string -- or the mapped-field preference registered in
+            # titleformat/field.py -- ever got a chance to see them.
+            "artists",
+            "albumartists",
         ]
 
         result = {}

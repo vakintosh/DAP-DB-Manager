@@ -124,8 +124,21 @@ for name in (
     Field.RegisterSimpleField(name)
 
 for name, fields in {
-    "artist": ["artist", "album artist", "composer", "performer"],
-    "album artist": ["album artist", "albumartist", "artist", "composer", "performer"],
+    # "artists"/"albumartists" (plural) are listed first: MusicBrainz
+    # Picard 3.0+ writes these as *true* multi-value tags alongside the
+    # legacy single `&`-joined `artist`/`album artist` tag (issue #32).
+    # Preferring them means a `%<artist>%`/`%<album artist>%` format string
+    # fans out into the individual artists when the structured tag is
+    # present, instead of the single ambiguous joined string.
+    "artist": ["artists", "artist", "album artist", "composer", "performer"],
+    "album artist": [
+        "albumartists",
+        "album artist",
+        "albumartist",
+        "artist",
+        "composer",
+        "performer",
+    ],
 }.items():
     Field.RegisterMappedField(name, fields)
 

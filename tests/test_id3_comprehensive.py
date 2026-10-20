@@ -44,6 +44,31 @@ class TestID3Mappings:
             "-9.0 dB"
         ]
 
+    def test_txxx_artists_multivalue(self, id3):
+        """Issue #32: Picard 3.0+ writes a plural `ARTISTS`/`ALBUMARTISTS`
+        TXXX frame carrying the *actual* individual artists as a true
+        multi-value ID3v2.4 text frame (distinct from the single,
+        human-readable `&`-joined `artist`/`album artist` frame it also
+        writes). Verify both are independently readable/writable.
+        """
+        EasyID3.Set["artists"](
+            id3, "artists", ["Adam Skorupa", "Pawe\u0142 B\u0142aszczak"]
+        )
+        assert "TXXX:artists" in id3
+        assert EasyID3.Get["artists"](id3, "artists") == [
+            "Adam Skorupa",
+            "Pawe\u0142 B\u0142aszczak",
+        ]
+
+        EasyID3.Set["albumartists"](
+            id3, "albumartists", ["Adam Skorupa", "Pawe\u0142 B\u0142aszczak"]
+        )
+        assert "TXXX:albumartists" in id3
+        assert EasyID3.Get["albumartists"](id3, "albumartists") == [
+            "Adam Skorupa",
+            "Pawe\u0142 B\u0142aszczak",
+        ]
+
     def test_comment_handler(self, id3):
         """Test comment (COMM) frame handling."""
         EasyID3.Set["comment"](id3, "comment", ["Great song"])

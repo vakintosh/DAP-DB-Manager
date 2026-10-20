@@ -187,6 +187,38 @@ class TestTagCacheEssentialTags:
         assert result["artist"] == ["Artist"]
         assert result.get_string("album") == ["Album"]
 
+    def test_extract_essential_tags_preserves_plural_artist_tags(self):
+        """Issue #32 regression.
+
+        `extract_essential_tags` is the allowlist every scanned file's tags
+        get reduced to before caching -- unconditionally, on every generate
+        run, not just when --save-tags/--load-tags is used (see
+        `FileScanner._add_file_internal`). If `artists`/`albumartists`
+        (the true multi-value tags MusicBrainz Picard 3.0+ writes
+        alongside the legacy single `&`-joined `artist`/`album artist`
+        tag) aren't in this allowlist, they are silently dropped before a
+        `%<artist>%` format string ever gets a chance to see them --
+        making the plural-tag preference wired up in
+        `titleformat.field` entirely inert in practice.
+        """
+        tag_obj = {
+            "artist": ["Adam Skorupa & Pawe\u0142 B\u0142aszczak"],
+            "artists": ["Adam Skorupa", "Pawe\u0142 B\u0142aszczak"],
+            "albumartist": ["Various Artists"],
+            "albumartists": ["Adam Skorupa", "Pawe\u0142 B\u0142aszczak"],
+        }
+
+        class FakeTag:
+            def __getitem__(self, key):
+                return tag_obj[key]
+
+        result = TagCache.extract_essential_tags(FakeTag())
+        assert result["artists"] == ["Adam Skorupa", "Pawe\u0142 B\u0142aszczak"]
+        assert result["albumartists"] == [
+            "Adam Skorupa",
+            "Pawe\u0142 B\u0142aszczak",
+        ]
+
 
 class TestTagCachePersistence:
     """Test TagCache save and load operations."""

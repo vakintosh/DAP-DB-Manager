@@ -33,6 +33,21 @@ def myprint(*args, **kwargs):
     sys.stdout.write(sep.join(str(a) for a in args) + end)
 
 
+def _first_scalar(value: Any) -> Any:
+    """Reduce a (possibly multi-value) formatted field to one representative string.
+
+    A multi-value format string (e.g. `%<artist>%`, see issue #32) formats
+    to a *list* of values -- one per distinct artist/genre/etc. Some
+    downstream logic (has_artist, canonicalartist, grouping fallback) only
+    ever needs a single representative value regardless of how many the
+    field actually has, so take the first one. Scalar (non-multi) formats
+    are returned unchanged.
+    """
+    if isinstance(value, (list, tuple)):
+        return value[0] if value else ""
+    return value
+
+
 # Worker-level cache for compiled formats (persists across batches in same process)
 _worker_format_cache = {}
 _worker_cache_key = None
@@ -79,7 +94,16 @@ def process_batch_task(
                 multiple_fields_map[field] = "<BLANK>"
 
             fmt = titleformat.compile(f"$if2({fmt_str},'<Untagged>')")
-            if sort_str is not None:
+            if sort_str:
+                # Falsy (None or "") means "no custom sort format" -- the
+                # common case, since Config.get_sort_format() returns ""
+                # (not None) as its sentinel for unconfigured fields.
+                # $if2({sort_str},{fmt_str}) with an *empty* first argument
+                # is a malformed conditional expression that silently
+                # produces a type-inconsistent (nested-list) result for
+                # multi-value fields, crashing Statement.format()'s
+                # internal type assertion (issue #32) -- so treat an empty
+                # sort_str exactly like no sort_str at all.
                 sort = titleformat.compile(f"$if2({sort_str},{fmt_str})")
             else:
                 sort = None
@@ -176,6 +200,8 @@ def process_batch_task(
         has_artist = False
         artist_value = None
         albumartist_value = None
+        artist_scalar = ""
+        albumartist_scalar = ""
 
         # We need to process in order of FILE_TAGS to maintain logic dependencies
         # (artist before canonicalartist)
@@ -193,17 +219,17 @@ def process_batch_task(
 
             # Special handling for canonicalartist
             if field == "canonicalartist":
-                if has_artist and artist_value:
-                    value = artist_value
+                if has_artist and artist_scalar:
+                    value = artist_scalar
                 else:
-                    value = albumartist_value if albumartist_value else "<Untagged>"
+                    value = albumartist_scalar if albumartist_scalar else "<Untagged>"
 
                 sort_val = None
                 if sort is not None:
                     sort_val = (
                         sort.format(tags)
                         if has_artist
-                        else (albumartist_value or "<Untagged>")
+                        else (albumartist_scalar or "<Untagged>")
                     )
 
                 processed_fields[field] = {"value": value, "sort": sort_val}
@@ -212,17 +238,23 @@ def process_batch_task(
             # Store artist/albumartist
             if field == "artist":
                 artist_value = fmt.format(tags)
+                # A multi-value format (`%<artist>%`) formats to a list of
+                # artists (issue #32); the has_artist/canonicalartist logic
+                # below only needs *one* representative value, so reduce to
+                # a scalar here rather than crashing on list.strip().
+                artist_scalar = _first_scalar(artist_value)
                 has_artist = bool(
-                    artist_value
-                    and artist_value.strip()
-                    and artist_value != "<Untagged>"
+                    artist_scalar
+                    and artist_scalar.strip()
+                    and artist_scalar != "<Untagged>"
                 )
             elif field == "album artist":
                 albumartist_value = fmt.format(tags)
+                albumartist_scalar = _first_scalar(albumartist_value)
 
             # Special handling for grouping
             if field == "grouping":
-                grouping_value = fmt.format(tags)
+                grouping_value = _first_scalar(fmt.format(tags))
                 has_grouping = bool(
                     grouping_value
                     and grouping_value.strip()
@@ -250,18 +282,36 @@ def process_batch_task(
                 sort_val = sort.format(tags) if sort is not None else None
                 processed_fields[field] = {"value": value, "sort": sort_val}
             else:
-                # Multiple value field
-                if sort is not None:
-                    s_val = sort.format(tags)
-                    sort_vals = s_val if isinstance(s_val, (tuple, list)) else [s_val]
-                else:
-                    sort_vals = [None]
-
+                # Multiple value field.
+                #
+                # Compute data_vals first: sort_vals must be padded to the
+                # *same* length. Previously, when no per-field sort format
+                # was configured (the common case -- sort_str defaults to
+                # None for every field), sort_vals was always a single-
+                # element [None] regardless of how many values the field
+                # actually had, and zip() silently truncated data_vals down
+                # to 1 entry -- discarding every artist/genre/etc. past the
+                # first whenever no sort format was set (issue #32).
                 d_val = fmt.format(tags)
                 data_vals = d_val if isinstance(d_val, (tuple, list)) else [d_val]
 
-                # Zip and store
-                # We need to handle length mismatch conceptually, zip truncates
+                if sort is not None:
+                    s_val = sort.format(tags)
+                    sort_vals = (
+                        list(s_val) if isinstance(s_val, (tuple, list)) else [s_val]
+                    )
+                    if len(sort_vals) != len(data_vals):
+                        # Defensive: an inconsistent number of sort values
+                        # relative to data values (e.g. differently-sized
+                        # multi-value tag pairs) -- pad/truncate rather than
+                        # silently losing data values to zip().
+                        sort_vals = (sort_vals + [None] * len(data_vals))[
+                            : len(data_vals)
+                        ]
+                else:
+                    sort_vals = [None] * len(data_vals)
+
+                # Zip and store (same length by construction above).
                 field_entries = []
                 for v, s in zip(data_vals, sort_vals):
                     field_entries.append({"value": v, "sort": s})

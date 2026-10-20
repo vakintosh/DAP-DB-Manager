@@ -116,6 +116,65 @@ class TestField:
 
         assert f.format(tags) == TagTrue("Art")
 
+    def test_artists_plural_preferred_over_joined_single_value(self):
+        """Issue #32: when a tagger (e.g. MusicBrainz Picard 3.0+) writes a
+        true multi-value `artists`/`albumartists` tag *alongside* the
+        legacy single `&`-joined `artist`/`album artist` tag, the mapped
+        field should prefer the structured multi-value tag so a
+        `%<artist>%`/`%<album artist>%` format string fans out into the
+        individual artists instead of the single ambiguous joined string.
+        """
+
+        def artist_side_effect(key):
+            data = {
+                "artists": ["Adam Skorupa", "Pawe\u0142 B\u0142aszczak"],
+                "artist": ["Adam Skorupa & Pawe\u0142 B\u0142aszczak"],
+            }
+            if key in data:
+                return data[key]
+            raise KeyError(key)
+
+        tags = MagicMock()
+        tags.get_string.side_effect = artist_side_effect
+
+        f = Field("artist", multiple=True)
+        res = f.format(tags)
+        assert [str(v) for v in res] == ["Adam Skorupa", "Pawe\u0142 B\u0142aszczak"]
+
+        def albumartist_side_effect(key):
+            data = {
+                "albumartists": ["Adam Skorupa", "Pawe\u0142 B\u0142aszczak"],
+                "album artist": ["Adam Skorupa & Pawe\u0142 B\u0142aszczak"],
+            }
+            if key in data:
+                return data[key]
+            raise KeyError(key)
+
+        tags2 = MagicMock()
+        tags2.get_string.side_effect = albumartist_side_effect
+
+        f2 = Field("album artist", multiple=True)
+        res2 = f2.format(tags2)
+        assert [str(v) for v in res2] == ["Adam Skorupa", "Pawe\u0142 B\u0142aszczak"]
+
+    def test_artist_falls_back_to_joined_value_without_plural_tag(self):
+        """When only the legacy single `&`-joined tag exists (no `artists`
+        tag), the mapped field still falls back to it -- unchanged,
+        unsplit -- since blind separator-splitting is ambiguous (e.g. band
+        names like "Earth, Wind & Fire" or "Simon & Garfunkel").
+        """
+
+        def side_effect(key):
+            if key == "artist":
+                return ["Earth, Wind & Fire"]
+            raise KeyError(key)
+
+        tags = MagicMock()
+        tags.get_string.side_effect = side_effect
+
+        f = Field("artist")
+        assert f.format(tags) == TagTrue("Earth, Wind & Fire")
+
     def test_special_fields(self):
         # tracknumber
         f = Field("tracknumber")

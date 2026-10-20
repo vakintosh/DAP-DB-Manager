@@ -299,6 +299,140 @@ class TestDatabaseGenerator:
             assert index[0]["genre"].key == "Rock"
             assert index[1]["genre"].key == "Pop"
 
+    def test_process_batch_task_multiple_artist_field(self):
+        """Issue #32 regression: a multi-value `%<artist>%` format must not
+        crash process_batch_task's scalar artist_value/has_artist/
+        canonicalartist logic, and must still Cartesian-fan-out into one
+        index-ready entry per artist (the same mechanism already proven for
+        multi-value `genre` above).
+
+        Uses the real titleformat compiler (not MockFormat) plus the real
+        SimpleTag wrapper, since simulating is_multiple/list-vs-scalar
+        semantics faithfully requires the real Field.format() behavior.
+        """
+        from dap_db_manager.database.cache import SimpleTag
+
+        entries = [
+            {
+                "path": "/Music/Song.mp3",
+                "mtime": 123,
+                "tags": SimpleTag(
+                    {
+                        "title": ["My Title"],
+                        "artist": ["Adam Skorupa", "Pawe\u0142 B\u0142aszczak"],
+                        "album artist": ["Various Artists"],
+                        "length": ["100"],
+                        "tracknumber": ["1"],
+                    }
+                ),
+            }
+        ]
+
+        format_strings = {
+            "title": ("%title%", None),
+            "artist": ("%<artist>%", None),
+            "canonicalartist": ("%artist%", "$if2(%artist%,%album artist%)"),
+            "album artist": ("%album artist%", None),
+        }
+
+        # Should not raise (pre-fix: AttributeError on list.strip()).
+        results = process_batch_task(entries, format_strings, ["artist"])
+        res = results[0]
+
+        artist_entries = res["multiple_fields"]["artist"]
+        assert [e["value"] for e in artist_entries] == [
+            "Adam Skorupa",
+            "Pawe\u0142 B\u0142aszczak",
+        ]
+
+        # canonicalartist must pick a sensible single representative value
+        # (the first artist), not crash or silently fall back to
+        # "<Untagged>"/album artist just because the underlying field is a
+        # list.
+        assert res["fields"]["canonicalartist"]["value"] == "Adam Skorupa"
+
+    def test_process_batch_task_multiple_field_without_sort_format(self):
+        """Regression test: multi-value fields with NO per-field sort
+        format (the common case -- most users never set one) must not lose
+        every value past the first to zip() truncation. sort_vals was
+        previously hard-coded to a single-element [None] regardless of how
+        many values the field actually produced.
+        """
+        from dap_db_manager.database.cache import SimpleTag
+
+        entries = [
+            {
+                "path": "/Music/Song.mp3",
+                "mtime": 123,
+                "tags": SimpleTag(
+                    {
+                        "title": ["My Title"],
+                        "genre": ["Rock", "Pop", "Jazz"],
+                        "length": ["100"],
+                        "tracknumber": ["1"],
+                    }
+                ),
+            }
+        ]
+
+        format_strings = {
+            "title": ("%title%", None),
+            "genre": ("%<genre>%", None),  # no sort format configured
+        }
+
+        results = process_batch_task(entries, format_strings, ["genre"])
+        genre_entries = results[0]["multiple_fields"]["genre"]
+        assert [e["value"] for e in genre_entries] == ["Rock", "Pop", "Jazz"]
+        assert [e["sort"] for e in genre_entries] == [None, None, None]
+
+    def test_process_batch_task_multiple_field_with_empty_sort_string(self):
+        """Regression test for issue #32.
+
+        `Config.get_sort_format()` returns `""` (empty string, not `None`)
+        as its documented sentinel for "no custom sort format configured" --
+        the common case for every field, since no one sets a sort format
+        for most fields. The CLI's --config loading path used to forward
+        that `""` straight into `Database.set_format()` as if it were a
+        real (if empty) sort expression. For a multi-value field, that
+        built `$if2(,%<artist>%)` -- an empty first argument -- which
+        produced a malformed nested-list value tripping
+        `Statement.format()`'s internal type assertion, crashing database
+        generation entirely.
+
+        An empty sort_str must be treated exactly like no sort_str (None):
+        a per-entry sort of None, not a crash.
+        """
+        from dap_db_manager.database.cache import SimpleTag
+
+        entries = [
+            {
+                "path": "/Music/Song.mp3",
+                "mtime": 123,
+                "tags": SimpleTag(
+                    {
+                        "title": ["My Title"],
+                        "artist": ["Adam Skorupa", "Pawe\u0142 B\u0142aszczak"],
+                        "length": ["100"],
+                        "tracknumber": ["1"],
+                    }
+                ),
+            }
+        ]
+
+        format_strings = {
+            "title": ("%title%", None),
+            # The empty string is the bug trigger -- not None.
+            "artist": ("%<artist>%", ""),
+        }
+
+        # Must not raise (pre-fix: AssertionError in Statement.format()).
+        results = process_batch_task(entries, format_strings, ["artist"])
+        artist_entries = results[0]["multiple_fields"]["artist"]
+        assert [e["value"] for e in artist_entries] == [
+            "Adam Skorupa",
+            "Pawe\u0142 B\u0142aszczak",
+        ]
+
     def test_worker_import_error(self):
         # Simulate ImportError inside worker
         with patch.dict("sys.modules", {"dap_db_manager.tagging": None}):

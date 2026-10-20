@@ -219,6 +219,15 @@ def setup_id3_mappings():
         "replaygain_track_peak",
         "album artist",
         "performer",
+        # MusicBrainz Picard 3.0+ writes these *in addition to* the single
+        # joined `artist`/`album artist` frame: true multi-value TXXX text
+        # frames carrying each individual artist as its own list element
+        # (issue #32). Exposed here under their own field names so a format
+        # string can opt into them with `%<artists>%` / `%<albumartists>%`
+        # without disturbing the existing single-value `artist`/`album
+        # artist` behavior.
+        "artists",
+        "albumartists",
     ):
         RegisterFoobarTXXXKey(name, name)
 
