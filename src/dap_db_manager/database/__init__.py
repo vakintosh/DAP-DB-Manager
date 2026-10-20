@@ -14,6 +14,7 @@ interface for creating and managing Rockbox database files.
 """
 
 import multiprocessing
+import unicodedata
 from typing import Optional, Callable, List
 import logging
 
@@ -351,6 +352,8 @@ class Database:
                 - added: Number of new files added
                 - renamed: Number of files renamed/moved (statistics preserved)
                 - modified: Number of files re-tagged in place (statistics preserved)
+                - renormalized: Number of files whose stored path was corrected to
+                  NFC Unicode form in place (statistics preserved)
                 - deleted: Number of files marked as deleted
                 - unchanged: Number of existing entries preserved
                 - failed: Number of files that failed to process
@@ -368,12 +371,20 @@ class Database:
 
         # Helper to normalize database paths for comparison (strip mount notation)
         def normalize_db_path(path: str) -> str:
-            """Strip mount notation from database path for comparison."""
+            """Strip mount notation from database path for comparison.
+
+            Also normalizes to NFC Unicode form: a stale entry written by a
+            pre-fix scanner may still hold a decomposed (NFD) path, and
+            without normalizing here it would permanently fail to match the
+            NFC path a freshly-scanned file produces, even after the scanner
+            itself is fixed.
+            """
+            normalized = unicodedata.normalize("NFC", path)
             if self.config:
                 mount_notation = self.config.get_mount_notation()
-                if mount_notation and path.startswith(mount_notation + "/"):
-                    return path[len(mount_notation) :].lower()
-            return path.lower()
+                if mount_notation and normalized.startswith(mount_notation + "/"):
+                    return normalized[len(mount_notation) :].lower()
+            return normalized.lower()
 
         # Helper to normalize scanned paths for comparison (strip dap_root)
         def normalize_scanned_path(path: str) -> str:
@@ -381,8 +392,8 @@ class Database:
             if self.dap_root:
                 clean = normalize_dap_path(path, dap_root=self.dap_root)
                 if clean is not None:
-                    return clean.lower()
-            return path.lower()
+                    return unicodedata.normalize("NFC", clean).lower()
+            return unicodedata.normalize("NFC", path).lower()
 
         # Map normalized scanned path -> real on-disk absolute path
         scanned_norm_to_real = {normalize_scanned_path(p): p for p in disk_metadata}
@@ -413,6 +424,7 @@ class Database:
             "added": 0,
             "renamed": 0,
             "modified": 0,
+            "renormalized": 0,
             "deleted": 0,
             "unchanged": len(existing_paths & new_paths),
             "failed": 0,
@@ -472,17 +484,36 @@ class Database:
                     f"Remaining: {len(paths_to_delete)} to delete, {len(paths_to_add)} to add"
                 )
 
-        # Detect modified files: same (normalized) path on both sides, but the
-        # on-disk mtime no longer matches what's stored in the database. This
-        # is the common case of retagging a file without renaming it -- rename
-        # detection above only helps when the path itself changes, so without
-        # this check an in-place tag edit falls into "unchanged" and is never
-        # rescanned. Mirrors Rockbox's own tagcache_update: add_tagcache()
-        # compares idx.tag_seek[tag_mtime] against the on-disk mtime and
-        # re-adds the entry on a mismatch, resurrecting the old entry's
-        # runtime stats onto the replacement.
+        # Detect modified files: same (normalized) path on both sides, but
+        # something about the stored entry no longer matches the file it
+        # describes. Two independent triggers feed the same re-tag pipeline:
+        #
+        # 1. mtime mismatch -- the common case of retagging a file without
+        #    renaming it. Mirrors Rockbox's own tagcache_update:
+        #    add_tagcache() compares idx.tag_seek[tag_mtime] against the
+        #    on-disk mtime and re-adds the entry on a mismatch, resurrecting
+        #    the old entry's runtime stats onto the replacement.
+        # 2. Unicode-form mismatch -- the stored path is not byte-identical
+        #    to the NFC path normalize_dap_path() would produce for the same
+        #    file today. This catches entries written by a pre-fix scanner
+        #    that stored macOS's decomposed (NFD) form; Rockbox's own FAT
+        #    code reads/compares paths byte-exact in precomposed (NFC) form
+        #    (file_internal.c strcasecmp), so an NFD-stored path silently
+        #    fails to open from Database even though the file plays fine
+        #    from the file browser. Deliberately NOT routed through the
+        #    fuzzy rename-detector: its 3-char filename prefix pre-filter
+        #    breaks whenever the accent is near the start of the name, and
+        #    its mtime/similarity fallback risks merging stats onto the
+        #    wrong track. This is a deterministic correction, not a rename.
+        #
+        # Both triggers route through the identical re-tag + stats-preserve
+        # pipeline; they are only tallied separately so the report
+        # distinguishes a genuine content edit from a path-encoding fix.
+        mount_notation = self.config.get_mount_notation() if self.config else None
         modified_old_to_path = {}
+        renormalized_old_to_path = {}
         modified_stats_by_path = {}
+        renormalized_stats_by_path = {}
         unchanged_norm_paths = existing_paths & new_paths
         if unchanged_norm_paths:
             callback("Checking for modified files...")
@@ -499,14 +530,19 @@ class Database:
                 old_fat = mtime_to_fat(old_mtime) if old_mtime else 0
                 if mtime_to_fat(disk_mtime) != old_fat:
                     modified_old_to_path[norm_path] = real_path
+                    continue
 
-            if modified_old_to_path:
+                canonical_path = normalize_dap_path(
+                    real_path, dap_root=self.dap_root, mount_point=mount_notation
+                )
+                stored_path = entry["path"].data
+                if canonical_path is not None and canonical_path != stored_path:
+                    renormalized_old_to_path[norm_path] = real_path
+
+            if modified_old_to_path or renormalized_old_to_path:
                 from .stats_preserver import STAT_TAGS
 
-                callback(
-                    f"Found {len(modified_old_to_path)} modified file(s), re-tagging..."
-                )
-                for norm_path in modified_old_to_path:
+                def _collect_stats(norm_path):
                     entry = entries_by_norm_path[norm_path]
                     values = {}
                     for tag in STAT_TAGS:
@@ -516,17 +552,39 @@ class Database:
                             continue
                         if value:
                             values[tag] = value
+                    return values
+
+                if modified_old_to_path:
+                    callback(
+                        f"Found {len(modified_old_to_path)} modified file(s), re-tagging..."
+                    )
+                for norm_path in modified_old_to_path:
+                    values = _collect_stats(norm_path)
                     if values:
                         modified_stats_by_path[norm_path] = values
                     # Mark the stale entry deleted; its replacement goes
                     # through the normal "add new files" path below, which is
                     # how it picks up freshly-read tags.
-                    entry.set_flag(FLAG_DELETED)
+                    entries_by_norm_path[norm_path].set_flag(FLAG_DELETED)
 
-                # Route the on-disk file back through the "add" pipeline so
-                # it is rescanned exactly like a genuinely new file.
-                paths_to_add = paths_to_add | set(modified_old_to_path.keys())
-                stats["unchanged"] -= len(modified_old_to_path)
+                if renormalized_old_to_path:
+                    callback(
+                        f"Found {len(renormalized_old_to_path)} file(s) with a stale "
+                        f"Unicode path form, correcting..."
+                    )
+                for norm_path in renormalized_old_to_path:
+                    values = _collect_stats(norm_path)
+                    if values:
+                        renormalized_stats_by_path[norm_path] = values
+                    entries_by_norm_path[norm_path].set_flag(FLAG_DELETED)
+
+                # Route the on-disk files back through the "add" pipeline so
+                # they are rescanned exactly like genuinely new files.
+                combined_norm_paths = set(modified_old_to_path) | set(
+                    renormalized_old_to_path
+                )
+                paths_to_add = paths_to_add | combined_norm_paths
+                stats["unchanged"] -= len(combined_norm_paths)
 
         # Mark deleted files (excluding renamed files)
         if paths_to_delete:
@@ -575,15 +633,22 @@ class Database:
             else:
                 self.multiple_fields = new_fields
 
-            stats["added"] = self.index.count - old_count - len(modified_old_to_path)
+            stats["added"] = (
+                self.index.count
+                - old_count
+                - len(modified_old_to_path)
+                - len(renormalized_old_to_path)
+            )
         else:
             callback("No new files to add")
             # Signal completion with 0 total so progress bar displays properly
             callback(0, 0)
 
-        # Apply preserved runtime stats onto the freshly re-tagged entries for
-        # modified files. Matching is by exact normalized path (not the fuzzy
-        # rename heuristics) since the path never changed.
+        # Apply preserved runtime stats onto the freshly re-tagged entries.
+        # Matching is by exact normalized path (not the fuzzy rename
+        # heuristics) since the path's *comparison key* never changed --
+        # only its on-disk content (modified) or its stored Unicode form
+        # (renormalized).
         if modified_stats_by_path:
             from .stats_preserver import StatsPreserver
 
@@ -598,6 +663,20 @@ class Database:
         else:
             stats["modified"] = len(modified_old_to_path)
 
+        if renormalized_stats_by_path:
+            from .stats_preserver import StatsPreserver
+
+            preserver = StatsPreserver(renormalized_stats_by_path)
+            for entry in self.index.entries:
+                if entry.is_deleted():
+                    continue
+                norm_path = normalize_db_path(entry["path"].data)
+                if norm_path in renormalized_stats_by_path:
+                    preserver.apply(norm_path, entry)
+            stats["renormalized"] = preserver.matched
+        else:
+            stats["renormalized"] = len(renormalized_old_to_path)
+
         # Calculate final counts
         final_active = sum(1 for e in self.index.entries if not e.is_deleted())
         final_deleted = sum(1 for e in self.index.entries if e.is_deleted())
@@ -608,7 +687,7 @@ class Database:
 
         callback(
             f"Update complete: {stats['added']} added, {stats['renamed']} renamed, "
-            f"{stats['modified']} modified, "
+            f"{stats['modified']} modified, {stats['renormalized']} renormalized, "
             f"{stats['deleted']} deleted, {stats['unchanged']} unchanged, "
             f"{final_active} active entries ({final_deleted} deleted)"
         )
