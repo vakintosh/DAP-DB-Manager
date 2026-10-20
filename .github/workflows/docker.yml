@@ -25,6 +25,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install ffmpeg
+        # The peaks feature shells out to ffmpeg to decode audio; without it
+        # every peaks extractor/manager test fails with FileNotFoundError.
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:

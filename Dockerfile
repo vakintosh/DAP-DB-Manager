@@ -17,7 +17,10 @@ RUN uv pip install --no-cache .
 
 FROM python:3.11-slim
 
-RUN apt-get purge -y --allow-remove-essential --auto-remove apt && \
+# ffmpeg is required at runtime: the peaks feature shells out to it to
+# decode audio for waveform generation.
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && \
+    apt-get purge -y --allow-remove-essential --auto-remove apt && \
     rm -rf /var/lib/apt/lists/* /var/cache/apt/*
 
 RUN useradd --create-home --shell /bin/bash --uid 1000 ddm
