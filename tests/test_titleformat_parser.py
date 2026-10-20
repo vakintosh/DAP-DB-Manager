@@ -148,12 +148,18 @@ class TestTitleformatEvaluation:
         fmt = titleformat_compile("%artist% - %title%")
 
         mock_tag = Mock()
-        mock_tag.get_string = Mock(
-            side_effect=lambda x: {
-                "artist": ["Test Artist"],
-                "title": ["Test Song"],
-            }.get(x, [])
-        )
+        _data = {
+            "artist": ["Test Artist"],
+            "title": ["Test Song"],
+        }
+
+        def _get_string(x):
+            try:
+                return _data[x]
+            except KeyError:
+                raise KeyError(x)
+
+        mock_tag.get_string = Mock(side_effect=_get_string)
 
         result = fmt.format(mock_tag)
         assert result == "Test Artist - Test Song"

@@ -204,27 +204,42 @@ def cmd_generate(args: argparse.Namespace) -> None:
         config = Config(config_path)
         config.load()
 
-        # Apply format settings from config
-        for field in [
-            "artist",
-            "album",
-            "genre",
-            "title",
-            "composer",
-            "comment",
-            "albumartist",
-            "grouping",
-            "canonicalartist",
-            "year",
-            "tracknumber",
-            "discnumber",
-        ]:
+        # Apply format settings from config.
+        #
+        # Config's format keys (see Config.DEFAULT_CONFIG in config.py) don't
+        # map 1:1 onto Database.set_format()'s accepted field names
+        # (FORMATTED_TAGS): "albumartist" (no space) is the config key for
+        # the database's "album artist" field, and "title" plus the embedded
+        # numeric fields ("year", "tracknumber", "discnumber") aren't
+        # customizable through this mechanism at all (they're excluded from
+        # FORMATTED_TAGS). Every DEFAULT_CONFIG format value is non-empty, so
+        # iterating those raw key names used to unconditionally trip
+        # Database.set_format()'s `assert field in FORMATTED_TAGS` and crash
+        # with an uncaught AssertionError the moment *any* valid --config
+        # file was supplied, even one that only customized "artist".
+        config_key_to_db_field = {
+            "artist": "artist",
+            "album": "album",
+            "genre": "genre",
+            "composer": "composer",
+            "comment": "comment",
+            "albumartist": "album artist",
+            "grouping": "grouping",
+            "canonicalartist": "canonicalartist",
+        }
+        for config_key, db_field in config_key_to_db_field.items():
             try:
-                format_str = config.get_format(field)
-                sort_str = config.get_sort_format(field)
+                format_str = config.get_format(config_key)
+                # Config.get_sort_format() returns "" (not None) as its
+                # sentinel for "no custom sort format configured" -- the
+                # common case. Database.set_format()/process_batch_task
+                # treat None as "no sort format"; forwarding "" verbatim
+                # used to build a malformed titleformat expression (issue
+                # #32), so normalize the empty-string sentinel to None here.
+                sort_str = config.get_sort_format(config_key) or None
                 if format_str:
-                    db.set_format(field, format_str, sort_str)
-                    logging.debug("Set format for %s: %s", field, format_str)
+                    db.set_format(db_field, format_str, sort_str)
+                    logging.debug("Set format for %s: %s", db_field, format_str)
             except KeyError:
                 pass
 

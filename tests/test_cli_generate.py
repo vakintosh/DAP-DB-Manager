@@ -172,6 +172,57 @@ class TestGenerateConfiguration:
             cmd_generate(mock_args)
         assert exc.value.code == ExitCode.INVALID_CONFIG
 
+    def test_custom_config_real_database_does_not_crash(self, tmp_path):
+        """Regression test: -c/--config must not crash cmd_generate against a
+        *real* Database when the config's DEFAULT_CONFIG formats are
+        applied as-is.
+
+        Every field in `Config.DEFAULT_CONFIG["formats"]` is non-empty, so
+        this loop used to unconditionally try to `Database.set_format()`
+        fields that are not in `FORMATTED_TAGS` (`title`, plus the
+        config-only `albumartist` key which doesn't match the database's
+        `album artist` field name, plus the embedded numeric
+        `year`/`tracknumber`/`discnumber` keys) -- tripping its internal
+        `assert field in FORMATTED_TAGS` and crashing with an uncaught
+        AssertionError any time a user supplied *any* valid --config file,
+        even one that only customizes `artist`.
+        """
+        from tests.conftest import music_test_folder
+
+        test_data = music_test_folder()
+        if not test_data.exists():
+            pytest.skip("Test data not available")
+
+        music_dir = tmp_path / "music"
+        music_dir.mkdir()
+        import shutil
+
+        src_file = next(test_data.rglob("*.mp3"))
+        shutil.copy(src_file, music_dir / src_file.name)
+
+        config_file = tmp_path / "config.toml"
+        config_file.write_text('[formats]\nartist = "%artist%"\n')
+
+        output_dir = tmp_path / "out"
+
+        args = argparse.Namespace(
+            music_dir=str(music_dir),
+            output=str(output_dir),
+            json=False,
+            save_tags=False,
+            load_tags=False,
+            config=str(config_file),
+            no_parallel=True,
+            workers=1,
+            dap_root=None,
+            no_preserve_stats=True,
+            preserve_stats_from=None,
+        )
+
+        with pytest.raises(SystemExit) as exc:
+            cmd_generate(args)
+        assert exc.value.code == ExitCode.SUCCESS
+
     def test_apply_format_settings(
         self, tmp_path, mock_args, mock_db_class, mock_config_class
     ):
