@@ -265,6 +265,24 @@ class TestTagCachePersistence:
         assert "/test1.mp3" in new_paths_set
         assert "/test2.mp3" in new_paths_set
 
+    def test_load_drops_entries_with_bytes_repr_values(self, tmp_path):
+        """Caches written before the MP4 freeform fix hold "b'Artist One'" strings.
+        Those entries must be dropped on load so the file gets re-read."""
+        TagCache.set(
+            "/bad.m4a",
+            ((1000, 1), {"artist": ["Artist One"], "artists": ["b'Artist One'", "b'Artist Two'"]}),
+        )
+        TagCache.set("/good.m4a", ((2000, 2), {"artist": ["Artist One"], "artists": ["Artist One"]}))
+        cache_file = tmp_path / "c.pkl.gz"
+        TagCache.save(str(cache_file), {"/bad.m4a", "/good.m4a"})
+        TagCache.clear()
+
+        paths = set()
+        TagCache.load(str(cache_file), paths)
+
+        assert paths == {"/good.m4a"}
+        assert TagCache.get("/bad.m4a") is None
+
     def test_load_nonexistent_file(self):
         """Test loading from a non-existent cache file."""
         paths_set = set()

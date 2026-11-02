@@ -6,6 +6,7 @@ database generation by avoiding repeated file reads.
 
 import pickle
 import gzip
+import re
 import gc
 import logging
 from collections import OrderedDict
@@ -48,6 +49,21 @@ class SimpleTag(dict):
                 return [str(value)]
         except KeyError:
             raise KeyError(key)
+
+
+_BYTES_REPR = re.compile(r"""^b(['"]).*\1$""", re.DOTALL)
+
+
+def _has_bytes_repr(tags: Any) -> bool:
+    """True if any cached tag value looks like a Python bytes repr (b'...')."""
+    if not isinstance(tags, dict):
+        return False
+    for value in tags.values():
+        values = value if isinstance(value, (list, tuple)) else [value]
+        for v in values:
+            if isinstance(v, str) and _BYTES_REPR.match(v):
+                return True
+    return False
 
 
 class TagCache:
@@ -317,6 +333,11 @@ class TagCache:
                         else:
                             if callback:
                                 callback(file_path)
+
+                            # Entries cached before the MP4 freeform fix hold
+                            # "b'...'" reprs; skip them so the file is re-read.
+                            if _has_bytes_repr(tags):
+                                continue
 
                             # Restore tags to usable format and cache
                             lowerpath = file_path.lower()

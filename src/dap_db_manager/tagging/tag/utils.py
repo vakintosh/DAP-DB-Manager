@@ -3,11 +3,26 @@
 from typing import Any, Union, List
 
 
+def _to_text(value: Any) -> str:
+    """str() a single value, decoding bytes instead of using their repr.
+
+    mutagen returns MP4 freeform atoms (----:com.apple.iTunes:ARTISTS etc.)
+    as MP4FreeForm, a bytes subclass; str() on it yields "b'...'".
+    """
+    if isinstance(value, (bytes, bytearray)):
+        raw = bytes(value).rstrip(b"\x00")
+        try:
+            return raw.decode("utf-8")
+        except UnicodeDecodeError:
+            return raw.decode("latin-1")
+    return str(value)
+
+
 def conv_string(value: Any) -> str:
     """Convert a value to a comma-separated string."""
     if not isinstance(value, (list, tuple)):
         value = [value]
-    return ", ".join(str(v) for v in value)
+    return ", ".join(_to_text(v) for v in value)
 
 
 def conv_number(value: Any) -> Union[int, float]:
