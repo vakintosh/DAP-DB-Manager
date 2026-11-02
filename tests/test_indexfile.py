@@ -111,3 +111,91 @@ class TestIndexFile:
         assert len(indexfile.entries) == 1
         assert indexfile.entries[0]["artist"] == 0
         assert indexfile.entries[0]["title"] == 0
+
+
+class TestRockboxSlotLayout:
+    """The on-disk index entry must follow Rockbox's tag_type enum.
+
+    apps/tagcache.h: artist=0 album genre title filename composer comment
+    albumartist grouping=8 year=9 discnumber=10 tracknumber=11
+    virt_canonicalartist=12 bitrate=13 length playcount rating playtime
+    lastplayed commitid mtime lastelapsed lastoffset=22, then index_entry.flag.
+    """
+
+    ROCKBOX_SLOTS = [
+        "artist",
+        "album",
+        "genre",
+        "title",
+        "path",
+        "composer",
+        "comment",
+        "album artist",
+        "grouping",
+        "date",
+        "discnumber",
+        "tracknumber",
+        "canonicalartist",
+        "bitrate",
+        "length",
+        "playcount",
+        "rating",
+        "playtime",
+        "lastplayed",
+        "commitid",
+        "mtime",
+        "lastelapsed",
+        "lastoffset",
+        "flag",
+    ]
+
+    def _entry(self):
+        import io
+        import struct
+        from dap_db_manager.constants import FILE_TAGS
+
+        entry = IndexEntry()
+        offsets = {}
+        for i, field in enumerate(FILE_TAGS):
+            te = TagEntry(field)
+            te.offset = 1000 + i
+            offsets[field] = te.offset
+            entry[field] = te
+        entry["date"] = 2026
+        entry["discnumber"] = 2
+        entry["tracknumber"] = 7
+        entry["bitrate"] = 320
+        entry["mtime"] = 0
+        buf = io.BytesIO()
+        entry.to_file(buf)
+        return buf.getvalue(), offsets, struct
+
+    def test_numeric_and_canonical_slots_match_rockbox(self):
+        data, offsets, struct = self._entry()
+        assert len(data) == 4 * len(self.ROCKBOX_SLOTS)
+        slots = struct.unpack("<24I", data)
+        assert slots[9] == 2026  # tag_year
+        assert slots[10] == 2  # tag_discnumber
+        assert slots[11] == 7  # tag_tracknumber
+        assert slots[12] == offsets["canonicalartist"]  # tag_virt_canonicalartist
+        assert slots[13] == 320  # tag_bitrate
+
+    def test_roundtrip_preserves_fields(self):
+        import io
+
+        data, offsets, _ = self._entry()
+
+        class FakeTagFile:
+            def __init__(self, field):
+                te = TagEntry(field)
+                te.offset = offsets[field]
+                self.offsets = {te.offset: te}
+
+        from dap_db_manager.constants import FILE_TAGS
+
+        tagfiles = {f: FakeTagFile(f) for f in FILE_TAGS}
+        back = IndexEntry.from_file(io.BytesIO(data), tagfiles)
+        assert back["date"] == 2026
+        assert back["discnumber"] == 2
+        assert back["tracknumber"] == 7
+        assert back["canonicalartist"].offset == offsets["canonicalartist"]
