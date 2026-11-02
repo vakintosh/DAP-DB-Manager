@@ -17,6 +17,8 @@ from mutagen.wave import WAVE
 from mutagen.wavpack import WavPack
 from mutagen.mp4 import MP4
 from mutagen.musepack import Musepack
+from mutagen.dsf import DSF
+from mutagen.dsdiff import DSDIFF
 
 from .core import Tag
 
@@ -43,6 +45,10 @@ FORMAT_MAPPING = {
     ".wv": WavPack,
     ".tta": TrueAudio,
     ".ape": APE,  # Added .ape (supported by import APEv2File)
+    # DSD -- Rockbox plays and indexes these since upstream f4c7e8b59
+    # (2026-10). SACD .iso images are also played but have no tag reader.
+    ".dsf": DSF,
+    ".dff": DSDIFF,
 }
 
 SUPPORTED_EXTENSIONS = set(FORMAT_MAPPING.keys())

@@ -1,6 +1,31 @@
 import time
+import unicodedata
 from pathlib import PurePosixPath, PureWindowsPath
-from typing import Optional
+from typing import Any, Optional
+
+
+def nfc(value: Any) -> Any:
+    """Normalize a tag string (or list/tuple of them) to Unicode NFC.
+
+    Mirrors Rockbox's ``utf8_normalize()`` (upstream 81fcb10f8), which the
+    on-device scanner applies to title/artist/album/genre/composer/comment/
+    albumartist/grouping/... File paths are handled separately, by the
+    scanner (#33). Values that are already NFC are returned unchanged (same
+    object), and titleformat ``TagBoolWrapper`` strings keep their truthiness.
+    """
+    if isinstance(value, str):
+        if unicodedata.is_normalized("NFC", value):
+            return value
+        normalized = unicodedata.normalize("NFC", value)
+        if type(value) is not str:
+            # titleformat's TagBoolWrapper(value, rep): keep its truthiness.
+            from .tagging.titleformat.tagbool import TagBool
+
+            return TagBool(bool(value), normalized)
+        return normalized
+    if isinstance(value, (list, tuple)):
+        return type(value)(nfc(v) for v in value)
+    return value
 
 
 def mtime_to_fat(mtime: float) -> int:

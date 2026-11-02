@@ -160,7 +160,12 @@ class Tag:
         convert: Optional[Callable] = None,
     ):
         def getter(tags):
-            return tags.info.__dict__[name]
+            # getattr, not __dict__: some stream-info classes (e.g. mutagen's
+            # DSFInfo) expose length/bitrate/... as properties.
+            try:
+                return getattr(tags.info, name)
+            except AttributeError:
+                raise KeyError(name) from None
 
         getter.__name__ = "info_getter(" + name + ")"
         cls.RegisterKey(key, type, getter, convert=convert)
