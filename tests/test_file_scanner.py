@@ -532,3 +532,42 @@ class TestParallelScanUsesParentCache:
 
         assert sorted(sent) == sorted(files[30:])
         assert len(paths) == 150 and not failed
+
+
+class TestChangedCachedFileIsReRead:
+    """A cached file whose size/mtime changed must be re-read. The
+    sequential path (and the parallel path once <= batch_size changed files
+    remain) called _add_file_internal without tags; it then stored the *new*
+    mtime with the *old* cached tags, so a tag edit was never picked up and
+    the stale entry became permanent."""
+
+    def teardown_method(self):
+        TagCache.clear()
+
+    def _stale_cache(self, tmp_path):
+        p = tmp_path / "Song.mp3"
+        p.write_bytes(b"x" * 10)
+        st = os.stat(p)
+        key = str(p).lower()
+        # Cached entry from an older version of the file.
+        TagCache.set(key, ((st.st_size, int(st.st_mtime) - 60), {"title": ["old"]}))
+        return str(p), key
+
+    @pytest.mark.parametrize("use_parallel", [False, True])
+    def test_changed_file_gets_fresh_tags(self, tmp_path, use_parallel):
+        path, key = self._stale_cache(tmp_path)
+        scanner = FileScanner(max_workers=1, use_multiprocessing=False)
+        paths, failed = set(), []
+        try:
+            with patch(
+                "dap_db_manager.tagging.read", return_value={"title": ["new"]}
+            ) as read:
+                scanner.add_files(
+                    [path], paths, failed, callback=None, use_parallel=use_parallel
+                )
+        finally:
+            scanner.shutdown()
+
+        assert read.called, "changed file was not re-read"
+        assert TagCache.get(key)[1]["title"] == ["new"]
+        assert TagCache.get(key)[0][1] == int(os.stat(path).st_mtime)

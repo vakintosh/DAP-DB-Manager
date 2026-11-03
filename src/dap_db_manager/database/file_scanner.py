@@ -254,13 +254,22 @@ class FileScanner:
             minimal_tags = TagCache.extract_essential_tags(tags)
             TagCache.set(lowerpath, ((size, mtime), minimal_tags))
         else:
-            if mtime > cached_mtime:
-                # Store minimal tags to reduce memory usage
-                minimal_tags = (
-                    TagCache.extract_essential_tags(tags)
-                    if tags is not None
-                    else TagCache.get(lowerpath)[1]
-                )
+            if (size, mtime) != (cached_size, cached_mtime):
+                # Changed since cached: the cached tags are stale. Re-read
+                # unless the caller already did -- never pair the new
+                # size/mtime with the old tags, or the edit is lost for good.
+                if tags is None:
+                    try:
+                        tags = tagging.read(absolute_path)
+                    except Exception as e:
+                        logging.debug(
+                            "Failed to read tags from %s: %s", absolute_path, e
+                        )
+                        tags = None
+                if tags is None:
+                    failed_list.append(absolute_path)
+                    return
+                minimal_tags = TagCache.extract_essential_tags(tags)
                 TagCache.set(lowerpath, ((size, mtime), minimal_tags))
                 # Move to end after update
                 TagCache.move_to_end(lowerpath)
