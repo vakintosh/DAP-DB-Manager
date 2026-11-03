@@ -51,6 +51,12 @@ class SimpleTag(dict):
             raise KeyError(key)
 
 
+# Bump when the set or meaning of cached essential tags changes; entries
+# written by older versions are dropped on load so the file is re-read.
+# v2: added "album artist" (previously %album artist% fell back to %artist%).
+CACHE_ENTRY_VERSION = 2
+CACHE_ENTRY_VERSION_KEY = "_ddm_cache_v"
+
 _BYTES_REPR = re.compile(r"""^b(['"]).*\1$""", re.DOTALL)
 
 
@@ -64,6 +70,16 @@ def _has_bytes_repr(tags: Any) -> bool:
             if isinstance(v, str) and _BYTES_REPR.match(v):
                 return True
     return False
+
+
+def _is_stale_entry(tags: Any) -> bool:
+    """True if a cached entry predates the current cache entry format or
+    contains bytes reprs from before the MP4 freeform fix."""
+    if not isinstance(tags, dict):
+        return False
+    if tags.get(CACHE_ENTRY_VERSION_KEY) != CACHE_ENTRY_VERSION:
+        return True
+    return _has_bytes_repr(tags)
 
 
 class TagCache:
@@ -243,6 +259,9 @@ class TagCache:
             "length",
             "path",
             "albumartist",
+            # The tag reader exposes the album artist as "album artist" (with
+            # a space); without it %album artist% fell back to %artist%.
+            "album artist",
             "performer",
             # MusicBrainz Picard 3.0+ writes these *in addition to* the
             # legacy single `&`-joined `artist`/`albumartist` tag: true
@@ -255,7 +274,7 @@ class TagCache:
             "albumartists",
         ]
 
-        result = {}
+        result = {CACHE_ENTRY_VERSION_KEY: CACHE_ENTRY_VERSION}
         for field in essential_fields:
             try:
                 result[field] = tag_obj[field]
@@ -336,7 +355,7 @@ class TagCache:
 
                             # Entries cached before the MP4 freeform fix hold
                             # "b'...'" reprs; skip them so the file is re-read.
-                            if _has_bytes_repr(tags):
+                            if _is_stale_entry(tags):
                                 continue
 
                             # Restore tags to usable format and cache
