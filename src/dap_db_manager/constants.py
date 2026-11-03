@@ -21,12 +21,12 @@ FILE_TAGS = [
 # because files 9-11 (year, discnumber, tracknumber) are embedded in the index
 FILE_TAG_INDICES = [0, 1, 2, 3, 4, 5, 6, 7, 8, 12]
 
-# Numeric tags stored in the index file (tag_seek array)
-# Continue from tag_year=10 in Rockbox
+# Numeric tags stored in the index file (tag_seek array).
+# NOTE: list order is NOT the on-disk order; see INDEX_SLOT_ORDER below.
 EMBEDDED_TAGS = [
-    "date",  # 10: tag_year
-    "discnumber",  # 11: tag_discnumber
-    "tracknumber",  # 12: tag_tracknumber
+    "date",  # 9: tag_year
+    "discnumber",  # 10: tag_discnumber
+    "tracknumber",  # 11: tag_tracknumber
     "bitrate",  # 13: tag_bitrate
     "length",  # 14: tag_length
     "playcount",  # 15: tag_playcount
@@ -39,6 +39,17 @@ EMBEDDED_TAGS = [
     "lastoffset",  # 22: tag_lastoffset (resume file offset)
     "flag",  # index_entry.flag (status flags)
 ]
+
+# On-disk order of index_entry.tag_seek[TAG_COUNT] followed by index_entry.flag.
+# Must match Rockbox apps/tagcache.h enum tag_type exactly:
+# ... grouping=8, year=9, discnumber=10, tracknumber=11,
+# virt_canonicalartist=12, bitrate=13, ... lastoffset=22.
+INDEX_SLOT_ORDER = (
+    FILE_TAGS[:9]
+    + ["date", "discnumber", "tracknumber", "canonicalartist"]
+    + EMBEDDED_TAGS[3:]
+)
+assert sorted(INDEX_SLOT_ORDER) == sorted(FILE_TAGS + EMBEDDED_TAGS)
 
 FORMATTED_TAGS = FILE_TAGS[:3] + FILE_TAGS[5:]
 

@@ -489,3 +489,46 @@ class TestAppleDoubleFiltering:
 
             considered = set(paths) | set(failed)
             assert real in considered, "the real track was filtered out"
+
+
+class TestParallelScanUsesParentCache:
+    """Worker processes are spawned (macOS) with an empty TagCache, so the
+    cache must be consulted in the parent; only new/changed files may be
+    handed to read_tags_batch."""
+
+    def teardown_method(self):
+        TagCache.clear()
+
+    def test_cached_unchanged_files_are_not_sent_to_workers(self, tmp_path):
+        files = []
+        for i in range(150):
+            p = tmp_path / f"Song {i:03d}.mp3"
+            p.write_bytes(b"x" * (i + 1))
+            files.append(str(p))
+        # Cache the first 30 as unchanged (keys: NFC, absolute, lowercased);
+        # the remaining 120 exceed batch_size, so they go to the workers.
+        for f in files[:30]:
+            st = os.stat(f)
+            TagCache.set(f.lower(), ((st.st_size, int(st.st_mtime)), {"title": ["t"]}))
+
+        scanner = FileScanner(max_workers=1, use_multiprocessing=False)
+        sent = []
+
+        def fake_batch(batch):
+            sent.extend(batch)
+            return [
+                (p, os.stat(p).st_size, int(os.stat(p).st_mtime), {"title": ["n"]})
+                for p in batch
+            ]
+
+        paths, failed = set(), []
+        try:
+            with patch.object(scanner, "read_tags_batch", side_effect=fake_batch):
+                scanner.add_files(
+                    files, paths, failed, callback=None, use_parallel=True
+                )
+        finally:
+            scanner.shutdown()
+
+        assert sorted(sent) == sorted(files[30:])
+        assert len(paths) == 150 and not failed

@@ -2,7 +2,17 @@
 
 import pytest
 from unittest.mock import Mock
-from dap_db_manager.database.cache import TagCache, SimpleTag
+from dap_db_manager.database.cache import (
+    CACHE_ENTRY_VERSION,
+    CACHE_ENTRY_VERSION_KEY,
+    SimpleTag,
+    TagCache,
+)
+
+
+def _v(tags):
+    """A cached tag dict in the current cache entry format."""
+    return {CACHE_ENTRY_VERSION_KEY: CACHE_ENTRY_VERSION, **tags}
 
 
 class TestSimpleTag:
@@ -237,11 +247,11 @@ class TestTagCachePersistence:
         test_data = {
             "/test1.mp3": (
                 (1000, 1234567890),
-                {"artist": ["Artist1"], "title": ["Song1"]},
+                _v({"artist": ["Artist1"], "title": ["Song1"]}),
             ),
             "/test2.mp3": (
                 (2000, 1234567891),
-                {"artist": ["Artist2"], "title": ["Song2"]},
+                _v({"artist": ["Artist2"], "title": ["Song2"]}),
             ),
         }
 
@@ -264,6 +274,50 @@ class TestTagCachePersistence:
         assert len(new_paths_set) == 2
         assert "/test1.mp3" in new_paths_set
         assert "/test2.mp3" in new_paths_set
+
+    def test_save_matches_mixed_case_paths_against_lowercase_keys(self, tmp_path):
+        """The scanner keys the cache by lowercased path but records the
+        original-case absolute path in paths_set. save() must still find the
+        entries; previously it saved 0 tags for any path with capitals."""
+        TagCache.set("/volumes/ipod/music/a.mp3", ((1, 2), _v({"artist": ["A"]})))
+        cache_file = tmp_path / "c.pkl.gz"
+        saved = TagCache.save(str(cache_file), {"/Volumes/IPOD/Music/A.mp3"})
+        TagCache.clear()
+
+        paths = set()
+        TagCache.load(str(cache_file), paths)
+
+        assert saved[1] == 1
+        assert paths == {"/volumes/ipod/music/a.mp3"}
+
+    def test_load_drops_entries_with_bytes_repr_values(self, tmp_path):
+        """Caches written before the MP4 freeform fix hold "b'Artist One'" strings.
+        Those entries must be dropped on load so the file gets re-read."""
+        TagCache.set(
+            "/bad.m4a",
+            (
+                (1000, 1),
+                _v(
+                    {
+                        "artist": ["Artist One"],
+                        "artists": ["b'Artist One'", "b'Artist Two'"],
+                    }
+                ),
+            ),
+        )
+        TagCache.set(
+            "/good.m4a",
+            ((2000, 2), _v({"artist": ["Artist One"], "artists": ["Artist One"]})),
+        )
+        cache_file = tmp_path / "c.pkl.gz"
+        TagCache.save(str(cache_file), {"/bad.m4a", "/good.m4a"})
+        TagCache.clear()
+
+        paths = set()
+        TagCache.load(str(cache_file), paths)
+
+        assert paths == {"/good.m4a"}
+        assert TagCache.get("/bad.m4a") is None
 
     def test_load_nonexistent_file(self):
         """Test loading from a non-existent cache file."""
@@ -348,7 +402,7 @@ class TestTagCacheIntegration:
         # 1. Populate cache
         files = [f"/music/song{i}.mp3" for i in range(10)]
         for i, file in enumerate(files):
-            TagCache.set(file, ((i * 1000, i * 100), {"artist": [f"Artist{i}"]}))
+            TagCache.set(file, ((i * 1000, i * 100), _v({"artist": [f"Artist{i}"]})))
 
         # 2. Save cache
         cache_file = tmp_path / "workflow_cache.pkl.gz"
@@ -371,3 +425,42 @@ class TestTagCacheIntegration:
             assert TagCache.get(file) is not None
         for file in files[5:]:
             assert TagCache.get(file) is None
+
+
+class TestEssentialTagsKeepAlbumArtist:
+    """The generator formats from cached essential tags. The tag reader
+    exposes the album artist as "album artist"; dropping it made every
+    %album artist% fall back to %artist% (e.g. "Group A， Member One， Member Two"
+    instead of the file's aART "Group A")."""
+
+    def teardown_method(self):
+        TagCache.clear()
+
+    def test_album_artist_survives_extract_and_restore(self):
+        from dap_db_manager.tagging.titleformat import compile as tf_compile
+
+        class FakeTags(dict):
+            pass
+
+        tags = FakeTags(
+            {"artist": ["Group A, Member One, Member Two"], "album artist": ["Group A"]}
+        )
+        restored = TagCache.restore_tag_dict(TagCache.extract_essential_tags(tags))
+        assert str(tf_compile("%album artist%").format(restored)) == "Group A"
+
+    def test_load_drops_entries_from_older_cache_format(self, tmp_path):
+        """Entries written before the album-artist fix carry no version
+        marker and cannot be trusted; they must be re-read."""
+        TagCache._cache["/old.m4a"] = ((1, 1), {"artist": ["A"]})
+        TagCache.set(
+            "/new.m4a",
+            ((2, 2), TagCache.extract_essential_tags({"artist": ["A"]})),
+        )
+        f = tmp_path / "c.pkl.gz"
+        TagCache.save(str(f), {"/old.m4a", "/new.m4a"})
+        TagCache.clear()
+
+        paths = set()
+        TagCache.load(str(f), paths)
+
+        assert paths == {"/new.m4a"}

@@ -89,11 +89,21 @@ class Field:
     @classmethod
     def RegisterMappedField(cls, name, mappings):
         def getter(tags):
+            first_empty = None
             for field in mappings:
                 try:
-                    return tags.get_string(field)
+                    value = tags.get_string(field)
                 except KeyError:
-                    pass
+                    continue
+                # An empty/blank tag (e.g. an empty ----:...:ARTISTS atom)
+                # must not shadow a populated fallback; keep looking, and only
+                # return the empty value if no candidate has content.
+                if any(str(v).strip() for v in value):
+                    return value
+                if first_empty is None:
+                    first_empty = value
+            if first_empty is not None:
+                return first_empty
             raise KeyError(name)
 
         getter.__name__ = f"get_mapped_{name}"

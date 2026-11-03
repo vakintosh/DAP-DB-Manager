@@ -304,6 +304,19 @@ class FileScanner:
             return
 
         if use_parallel and total_files > batch_size:
+            # Worker processes are spawned (macOS default) with an empty
+            # TagCache, so they can never hit it. Resolve unchanged cached
+            # files here in the parent and send only new/changed ones out.
+            to_read = []
+            for file_str in valid_files:
+                if self._is_cached_unchanged(file_str):
+                    self._add_file_internal(file_str, paths_set, failed_list)
+                else:
+                    to_read.append(file_str)
+            valid_files = to_read
+            total_files = len(valid_files)
+
+        if use_parallel and total_files > batch_size:
             file_count = 0
             for i in range(0, total_files, batch_size):
                 batch = valid_files[i : i + batch_size]
@@ -333,6 +346,23 @@ class FileScanner:
 
             if callback and total_files % batch_size != 0:
                 callback(f"Processing files... {total_files}/{total_files}")
+
+    @staticmethod
+    def _is_cached_unchanged(path: str) -> bool:
+        """True if path is in TagCache with matching size and mtime.
+
+        Uses the same key normalization as _add_file_internal.
+        """
+        path_obj = Path(path).absolute()
+        key = unicodedata.normalize("NFC", str(path_obj)).lower()
+        if not TagCache.contains(key):
+            return False
+        try:
+            stat = path_obj.stat()
+        except OSError:
+            return False
+        cached_size, cached_mtime = TagCache.get(key)[0]
+        return stat.st_size == cached_size and int(stat.st_mtime) == cached_mtime
 
     def read_tags_batch(
         self, file_paths: List[str]

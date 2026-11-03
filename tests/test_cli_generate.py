@@ -34,6 +34,14 @@ def mock_db_class():
         db_instance.index.count = 500
         db_instance.paths = ["file1", "file2"]
         db_instance.failed = []
+
+        # Like the real scan, add_dir repopulates paths that generate cleared
+        # after load_tags.
+        def _scan(*args, **kwargs):
+            if db_instance.load_tags.called and not db_instance.paths:
+                db_instance.paths.extend(["file1", "file2"])
+
+        db_instance.add_dir.side_effect = _scan
         db_instance.tagfiles = {tag: Mock(entries=[1] * 10) for tag in FILE_TAGS}
         db_instance.config = Mock()
         db_instance.config.get_mount_notation.return_value = None
@@ -280,6 +288,35 @@ class TestGenerateCache:
 
         db_instance = mock_db_class.return_value
         db_instance.load_tags.assert_called_with(str(cache_file), callback=ANY)
+
+    def test_load_tags_does_not_index_cached_paths(
+        self,
+        tmp_path,
+        mock_args,
+        mock_db_class,
+        mock_config_class,
+        mock_tag_cache_class,
+    ):
+        """Loaded cache entries are only a lookup aid: paths restored by
+        load_tags (lowercased, possibly deleted files) must not be indexed;
+        only files found by the scan are."""
+        cache_file = tmp_path / "tags.cache"
+        cache_file.touch()
+        mock_args.load_tags = str(cache_file)
+        db_instance = mock_db_class.return_value
+        db_instance.paths = set()
+        db_instance.load_tags.side_effect = lambda *a, **k: db_instance.paths.update(
+            {"/music/deleted.mp3", "/music/a.mp3"}
+        )
+        seen = {}
+        db_instance.add_dir.side_effect = lambda *a, **k: seen.setdefault(
+            "paths_at_scan", set(db_instance.paths)
+        )
+
+        with pytest.raises(SystemExit):
+            cmd_generate(mock_args)
+
+        assert seen["paths_at_scan"] == set()
 
     def test_load_tags_gz_fallback(
         self,

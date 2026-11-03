@@ -86,3 +86,64 @@ class TestTagUtils:
 
         # lists converted to string
         assert conv_default(["a", "b"]) == "a, b"
+
+
+class TestFreeformBytesDecoding:
+    """MP4 freeform atoms (e.g. ----:com.apple.iTunes:ARTISTS) come back from
+    mutagen as MP4FreeForm, a bytes subclass. They must be decoded, never
+    rendered as the Python repr "b'...'".
+    """
+
+    def test_conv_string_list_decodes_mp4freeform(self):
+        from mutagen.mp4 import MP4FreeForm
+        from dap_db_manager.tagging.tag.utils import conv_string_list
+
+        value = [MP4FreeForm(b"Artist One"), MP4FreeForm("ARTISTØ".encode("utf-8"))]
+        assert conv_string_list(value) == ["Artist One", "ARTISTØ"]
+
+    def test_conv_string_decodes_plain_bytes(self):
+        from dap_db_manager.tagging.tag.utils import conv_string
+
+        assert conv_string([b"Artist Two", "Artist One"]) == "Artist Two, Artist One"
+
+    def test_conv_string_invalid_utf8_falls_back_to_latin1(self):
+        from dap_db_manager.tagging.tag.utils import conv_string
+
+        assert conv_string(b"c\xe9") == "cé"
+
+    def test_mp4_artists_freeform_read_end_to_end(self, tmp_path):
+        import shutil
+        import subprocess
+
+        import pytest
+        from mutagen.mp4 import MP4, MP4FreeForm
+        from dap_db_manager.tagging.tag.formats import read
+
+        if not shutil.which("ffmpeg"):
+            pytest.skip("ffmpeg not available")
+        path = tmp_path / "a.m4a"
+        subprocess.run(
+            [
+                "ffmpeg",
+                "-v",
+                "quiet",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "anullsrc=r=44100:cl=mono",
+                "-t",
+                "0.1",
+                "-c:a",
+                "aac",
+                str(path),
+            ],
+            check=True,
+        )
+        m = MP4(str(path))
+        m["----:com.apple.iTunes:ARTISTS"] = [
+            MP4FreeForm(b"Artist One"),
+            MP4FreeForm(b"Artist Two"),
+        ]
+        m.save()
+        assert read(str(path)).get("artists") == ["Artist One", "Artist Two"]

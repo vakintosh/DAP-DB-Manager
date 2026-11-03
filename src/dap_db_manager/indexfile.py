@@ -7,6 +7,7 @@ from .constants import (
     TAGS,
     FILE_TAGS,
     EMBEDDED_TAGS,
+    INDEX_SLOT_ORDER,
     SUPPORTED_VERSIONS,
     FLAG_DELETED,
     FLAG_DIRCACHE,
@@ -16,6 +17,8 @@ from .constants import (
 )
 from .tagging.tag.tagfile import TagEntry
 import logging
+
+_FILE_TAG_SET = frozenset(FILE_TAGS)
 
 
 class IndexFile:
@@ -210,17 +213,18 @@ class IndexEntry(dict):
         return self.has_flag(FLAG_RESURRECTED)
 
     def to_file(self, f):
-        for field in FILE_TAGS:
-            tagentry = self[field]
-            assert isinstance(tagentry, TagEntry) and tagentry.offset is not None
-            f.write(struct.pack("I", tagentry.offset))
-
-        for field in EMBEDDED_TAGS:
-            value = self[field]
-            # mtime needs to be converted from float back to FAT format integer
-            if field == "mtime":
-                value = mtime_to_fat(value)
-            f.write(struct.pack("I", value))
+        # Slot order must follow Rockbox's tag_type enum (INDEX_SLOT_ORDER).
+        for field in INDEX_SLOT_ORDER:
+            if field in _FILE_TAG_SET:
+                tagentry = self[field]
+                assert isinstance(tagentry, TagEntry) and tagentry.offset is not None
+                f.write(struct.pack("I", tagentry.offset))
+            else:
+                value = self[field]
+                # mtime needs to be converted from float back to FAT format integer
+                if field == "mtime":
+                    value = mtime_to_fat(value)
+                f.write(struct.pack("I", value))
 
     @staticmethod
     def from_file(f, tagfiles):
@@ -232,8 +236,12 @@ class IndexEntry(dict):
         """
 
         index_entry = IndexEntry()
-        for field in FILE_TAGS:
-            offset = struct.unpack("I", f.read(4))[0]
+        for field in INDEX_SLOT_ORDER:
+            value = struct.unpack("I", f.read(4))[0]
+            if field not in _FILE_TAG_SET:
+                index_entry[field] = value
+                continue
+            offset = value
 
             # Handle invalid or missing offsets gracefully
             if offset == 0 or offset not in tagfiles[field].offsets:
@@ -242,8 +250,6 @@ class IndexEntry(dict):
             else:
                 index_entry[field] = tagfiles[field].offsets[offset]
 
-        for field in EMBEDDED_TAGS:
-            index_entry[field] = struct.unpack("I", f.read(4))[0]
         index_entry.mtime = fat_to_mtime(index_entry.mtime)
 
         return index_entry

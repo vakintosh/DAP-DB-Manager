@@ -6,6 +6,7 @@ database generation by avoiding repeated file reads.
 
 import pickle
 import gzip
+import re
 import gc
 import logging
 from collections import OrderedDict
@@ -48,6 +49,37 @@ class SimpleTag(dict):
                 return [str(value)]
         except KeyError:
             raise KeyError(key)
+
+
+# Bump when the set or meaning of cached essential tags changes; entries
+# written by older versions are dropped on load so the file is re-read.
+# v2: added "album artist" (previously %album artist% fell back to %artist%).
+CACHE_ENTRY_VERSION = 2
+CACHE_ENTRY_VERSION_KEY = "_ddm_cache_v"
+
+_BYTES_REPR = re.compile(r"""^b(['"]).*\1$""", re.DOTALL)
+
+
+def _has_bytes_repr(tags: Any) -> bool:
+    """True if any cached tag value looks like a Python bytes repr (b'...')."""
+    if not isinstance(tags, dict):
+        return False
+    for value in tags.values():
+        values = value if isinstance(value, (list, tuple)) else [value]
+        for v in values:
+            if isinstance(v, str) and _BYTES_REPR.match(v):
+                return True
+    return False
+
+
+def _is_stale_entry(tags: Any) -> bool:
+    """True if a cached entry predates the current cache entry format or
+    contains bytes reprs from before the MP4 freeform fix."""
+    if not isinstance(tags, dict):
+        return False
+    if tags.get(CACHE_ENTRY_VERSION_KEY) != CACHE_ENTRY_VERSION:
+        return True
+    return _has_bytes_repr(tags)
 
 
 class TagCache:
@@ -227,6 +259,9 @@ class TagCache:
             "length",
             "path",
             "albumartist",
+            # The tag reader exposes the album artist as "album artist" (with
+            # a space); without it %album artist% fell back to %artist%.
+            "album artist",
             "performer",
             # MusicBrainz Picard 3.0+ writes these *in addition to* the
             # legacy single `&`-joined `artist`/`albumartist` tag: true
@@ -239,7 +274,7 @@ class TagCache:
             "albumartists",
         ]
 
-        result = {}
+        result = {CACHE_ENTRY_VERSION_KEY: CACHE_ENTRY_VERSION}
         for field in essential_fields:
             try:
                 result[field] = tag_obj[field]
@@ -317,6 +352,11 @@ class TagCache:
                         else:
                             if callback:
                                 callback(file_path)
+
+                            # Entries cached before the MP4 freeform fix hold
+                            # "b'...'" reprs; skip them so the file is re-read.
+                            if _is_stale_entry(tags):
+                                continue
 
                             # Restore tags to usable format and cache
                             lowerpath = file_path.lower()
@@ -399,8 +439,10 @@ class TagCache:
         if not path.endswith(".gz"):
             path = path + ".gz"
 
-        # Only save paths that exist in tag_cache (some may have been trimmed)
-        valid_paths = [p for p in paths_set if p in cls._cache]
+        # Only save paths that exist in tag_cache (some may have been trimmed).
+        # Cache keys are lowercased paths while paths_set holds original-case
+        # absolute paths, so compare (and save) the lowercased form.
+        valid_paths = sorted({p.lower() for p in paths_set if p.lower() in cls._cache})
         missing_count = len(paths_set) - len(valid_paths)
         if missing_count > 0:
             logging.warning(
