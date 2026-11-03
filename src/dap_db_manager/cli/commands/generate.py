@@ -258,6 +258,10 @@ def cmd_generate(args: argparse.Namespace) -> None:
         else:
             logging.info("Loading tags from: %s", tags_path)
             db.load_tags(str(tags_path), callback=log_callback)
+            # The loaded cache is only a lookup aid for the scan below. Drop
+            # the paths load_tags restored (lowercased keys, and files that
+            # may since have been deleted) so only scanned files get indexed.
+            db.paths.clear()
             tag_cache = TagCache.get_cache()
             logging.info("Loaded %s cached tags", len(tag_cache))
     else:
