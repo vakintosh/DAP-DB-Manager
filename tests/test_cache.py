@@ -265,6 +265,21 @@ class TestTagCachePersistence:
         assert "/test1.mp3" in new_paths_set
         assert "/test2.mp3" in new_paths_set
 
+    def test_save_matches_mixed_case_paths_against_lowercase_keys(self, tmp_path):
+        """The scanner keys the cache by lowercased path but records the
+        original-case absolute path in paths_set. save() must still find the
+        entries; previously it saved 0 tags for any path with capitals."""
+        TagCache.set("/volumes/ipod/music/a.mp3", ((1, 2), {"artist": ["A"]}))
+        cache_file = tmp_path / "c.pkl.gz"
+        saved = TagCache.save(str(cache_file), {"/Volumes/IPOD/Music/A.mp3"})
+        TagCache.clear()
+
+        paths = set()
+        TagCache.load(str(cache_file), paths)
+
+        assert saved[1] == 1
+        assert paths == {"/volumes/ipod/music/a.mp3"}
+
     def test_load_drops_entries_with_bytes_repr_values(self, tmp_path):
         """Caches written before the MP4 freeform fix hold "b'Artist One'" strings.
         Those entries must be dropped on load so the file gets re-read."""

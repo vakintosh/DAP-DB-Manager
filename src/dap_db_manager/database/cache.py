@@ -420,8 +420,10 @@ class TagCache:
         if not path.endswith(".gz"):
             path = path + ".gz"
 
-        # Only save paths that exist in tag_cache (some may have been trimmed)
-        valid_paths = [p for p in paths_set if p in cls._cache]
+        # Only save paths that exist in tag_cache (some may have been trimmed).
+        # Cache keys are lowercased paths while paths_set holds original-case
+        # absolute paths, so compare (and save) the lowercased form.
+        valid_paths = sorted({p.lower() for p in paths_set if p.lower() in cls._cache})
         missing_count = len(paths_set) - len(valid_paths)
         if missing_count > 0:
             logging.warning(
