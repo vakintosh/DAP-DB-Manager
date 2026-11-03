@@ -295,10 +295,19 @@ class TestTagCachePersistence:
         Those entries must be dropped on load so the file gets re-read."""
         TagCache.set(
             "/bad.m4a",
-            ((1000, 1), _v({"artist": ["Artist One"], "artists": ["b'Artist One'", "b'Artist Two'"]})),
+            (
+                (1000, 1),
+                _v(
+                    {
+                        "artist": ["Artist One"],
+                        "artists": ["b'Artist One'", "b'Artist Two'"],
+                    }
+                ),
+            ),
         )
         TagCache.set(
-            "/good.m4a", ((2000, 2), _v({"artist": ["Artist One"], "artists": ["Artist One"]}))
+            "/good.m4a",
+            ((2000, 2), _v({"artist": ["Artist One"], "artists": ["Artist One"]})),
         )
         cache_file = tmp_path / "c.pkl.gz"
         TagCache.save(str(cache_file), {"/bad.m4a", "/good.m4a"})
