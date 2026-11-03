@@ -2,7 +2,7 @@
 
 **ddm version audited:** 0.9.0 (`pyproject.toml`)
 **Upstream reference:** Rockbox firmware `apps/tagcache.{c,h}` (5,523 + 218 lines)
-**Date:** 2026-09-07
+**Date:** 2026-09-07 · **Corrections:** 2026-11-03 (v0.11.0), see §1 and Gap 4
 
 ## Scope
 
@@ -22,7 +22,7 @@ Unchanged since header v16; upstream has not altered the binary layout.
 | Item | Rockbox | ddm | Status |
 |---|---|---|---|
 | `TAGCACHE_MAGIC` | `0x54434810` (v16) | `MAGIC = 1413695504` (`constants.py:58`) | yes |
-| `enum tag_type` order (23 tags) | `artist … tag_lastoffset` | `constants.py:7–46`, same order | yes |
+| `enum tag_type` order (23 tags) | `artist … tag_lastoffset` | `INDEX_SLOT_ORDER` (`constants.py`) | yes since 0.11.0; **was wrong up to 0.10.0** (see below) |
 | `struct index_entry` | `tag_seek[TAG_COUNT]` + `flag` = 24 × int32 | `IndexEntry.size = 4*24` | yes |
 | `struct master_header` | magic, datasize, entry_count, serial, commitid, dirty | `header_size = 6*4`; fields at `indexfile.py:24–26,103–105` | yes |
 | Flag bits | DELETED / DIRCACHE / DIRTYNUM / TRKNUMGEN / RESURRECTED | all five, `constants.py:48–52` | yes |
@@ -31,7 +31,21 @@ Unchanged since header v16; upstream has not altered the binary layout.
 | `FLAG_TRKNUMGEN` on generated track numbers | yes | `generator.py:602` | yes |
 | `serial` / `commitid` / `dirty` maintenance | yes | `indexfile.py:95–96` (commitid++, dirty=0) | yes |
 
-**Conclusion:** binary compatibility is complete. Nothing stale here.
+**Conclusion (2026-09-07):** binary compatibility is complete. Nothing stale here.
+
+> **Correction (2026-11-03, v0.11.0, PR #39): this conclusion was wrong.** The audit
+> compared the *tag list* in `constants.py` with `enum tag_type`, and that list was in
+> the right order. But `IndexEntry.to_file`/`from_file` serialized `FILE_TAGS` then
+> `EMBEDDED_TAGS`, so `tag_seek[9..12]` held canonicalartist/year/disc/track instead
+> of year/disc/track/canonicalartist. On the device the year read as the disc number
+> (`2026.00. Title`), track order and the Year menu broke. The reader shared the
+> wrong order, so round-trip tests and `validate` agreed with it. The repo fixture
+> `test-fixtures/tcd_reference_ipod`, described as device-built, has the same wrong
+> layout, so it was DDM-written and is not ground truth.
+>
+> **Lesson for the next audit:** check *serialized byte offsets* against the enum,
+> or check a database the device itself built. Comparing the declarations is not
+> enough. Databases written by ≤ 0.10.0 need one full `generate`.
 
 ---
 
@@ -186,6 +200,31 @@ Rockbox additionally indexes chiptune/tracker formats (SID, MOD, SPC, NSF), AC3/
 and raw AAC-ADTS. mutagen has no taggers for most. Irrelevant to the current library;
 recorded for completeness. Would require hand-written parsers. partial won't-fix
 
+### Gap 4 — tag precedence differed from the firmware's parser — **FIXED 2026-11-03 (v0.11.0)**
+
+Which source tag feeds each database field is part of parity, not just the binary
+layout. The 2026-09-07 audit didn't cover it. Rockbox's metadata parser
+(`lib/rbcodec/metadata/`) fills `albumartist` from:
+
+| Container | Rockbox reads | Never reads |
+|---|---|---|
+| ID3 (`id3tags.c`) | `TPE2`/`TP2`, `TXXX:ALBUM ARTIST` | `TXXX:ALBUMARTISTS` |
+| MP4 (`mp4.c`) | `aART`, freeform `album artist` | `----:…:ALBUMARTISTS` |
+| Vorbis (`metadata_common.c`) | `albumartist`, `album artist`, `ensemble` | `albumartists` |
+
+Track artist works the same way (`TPE1`/`©ART`/`artist`, never `ARTISTS`).
+
+From v0.10.0 (#36), the mapped `artist`/`album artist` fields put Picard's plural tags
+first, for the **scalar** default format too. MP3 stores the plural tag as one
+`A/B` string and MP4 as a list (joined `B, A`), so the same act produced two
+spellings depending on the container. On a 17.8k-track library: 120 multi-name
+album artists across 1,237 tracks, 1,125 of them from `ALBUMARTISTS`.
+
+**Fix (PR #40):** the scalar `%artist%`/`%album artist%` now follow the firmware
+(singular tag first; the plural only as a fallback before composer/performer). The
+multi-value `%<artist>%`/`%<album artist>%` keep preferring the plural tags, as a
+documented opt-in divergence for richer browsing (#32). yes
+
 ---
 
 ## 4. Gap 3 — AppleDouble sidecars enqueued as tracks — **FIXED**
@@ -260,6 +299,7 @@ scanned **17,139 files with 0 failed**.
 | no Missing | 2 | `create_changelog` (in scope), `import_changelog` (device-side upstream) |
 | partial Divergent | 1 | exotic codecs (won't-fix) |
 | yes Fixed this pass | 3 | `grouping` on MP4/ASF, default `grouping` mapping, AppleDouble filtering (divergence) |
+| yes Fixed 2026-11-03 | 2 | index slot order (§1 correction, #39), artist/album-artist tag precedence (Gap 4, #40) |
 | n/a N/A (device-only) | 27 | search ×9, numeric edits ×3, lifecycle ×12, ramcache ×3, `tagtree.c` |
 
 ## 6. End-to-End Verification (2026-09-07)
