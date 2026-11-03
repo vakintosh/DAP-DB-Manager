@@ -19,7 +19,7 @@ except ImportError:
     titleformat = None  # type: ignore[assignment]
 
 from ..constants import FILE_TAGS, EMBEDDED_TAGS, FLAG_TRKNUMGEN
-from ..utils import normalize_dap_path
+from ..utils import nfc, normalize_dap_path
 from ..tagging.tag.tagfile import TagEntry
 from ..indexfile import IndexEntry
 from .cache import TagCache
@@ -317,6 +317,20 @@ def process_batch_task(
                     field_entries.append({"value": v, "sort": s})
 
                 multiple_tags_data[field] = field_entries
+
+        # Unicode NFC, matching Rockbox's on-device scanner (upstream
+        # 81fcb10f8). Done here -- before _assemble_entry's tagfile lookups --
+        # so NFD and NFC spellings of the same name collapse into one entry.
+        # The path is not touched here: the scanner already normalizes it
+        # (#33), and tag normalization must not second-guess that.
+        result["title_tag"] = nfc(result["title_tag"])
+        for data in processed_fields.values():
+            data["value"] = nfc(data["value"])
+            data["sort"] = nfc(data["sort"])
+        for items in multiple_tags_data.values():
+            for data in items:
+                data["value"] = nfc(data["value"])
+                data["sort"] = nfc(data["sort"])
 
         result["fields"] = processed_fields
         result["multiple_fields"] = multiple_tags_data

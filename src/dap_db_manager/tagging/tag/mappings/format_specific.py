@@ -1,4 +1,5 @@
-"""Format-specific tag field mappings (ASF, MP4, APE, Musepack, WavPack)."""
+"""Format-specific tag field mappings (ASF, MP4, APE, Musepack, WavPack,
+raw-ID3 containers, Vorbis comments)."""
 
 from mutagen.asf import ASF
 from mutagen.mp4 import MP4
@@ -7,6 +8,14 @@ from mutagen.musepack import Musepack
 
 from mutagen.wavpack import WavPack
 from mutagen.wave import WAVE
+from mutagen.aiff import AIFF
+from mutagen.dsf import DSF
+from mutagen.dsdiff import DSDIFF
+from mutagen.flac import FLAC
+from mutagen.oggflac import OggFLAC
+from mutagen.oggopus import OggOpus
+from mutagen.oggspeex import OggSpeex
+from mutagen.oggvorbis import OggVorbis
 
 from ..core import Tag
 
@@ -197,7 +206,12 @@ def setup_format_specific_mappings():
         if not deleted:
             raise KeyError("date")
 
-    # WAVE custom mapping
+    # Raw-ID3 container mapping
+    # ---------------------------
+    # WAVE, AIFF, DSF and DSDIFF all carry a plain ID3 chunk rather than an
+    # EasyID3 view, so their fields must be mapped to ID3 frames explicitly.
+    # (Before this was shared, only WAVE had it: AIFF files were indexed as
+    # <Untagged>.)
     tag_dict = {
         "artist": "TPE1",
         "album artist": "TPE2",
@@ -207,29 +221,53 @@ def setup_format_specific_mappings():
         "genre": "TCON",
         "composer": "TCOM",
         "comment": "COMM::eng",
-        "disc": "TPOS",
-        "track": "TRCK",
+        "grouping": "TIT1",
     }
 
-    # Register basic keys
-    for key, frame in tag_dict.items():
-        if key not in ["disc", "track"]:
-            Tag.RegisterBasicKey(key, frame, WAVE)
+    for id3_container in (WAVE, AIFF, DSF, DSDIFF):
+        for key, frame in tag_dict.items():
+            Tag.RegisterBasicKey(key, frame, id3_container)
 
-    # Register custom date getter/setter/deleter
-    Tag.RegisterKey(
-        "date",
-        WAVE,
-        getter=WAVE_date_getter,
-        setter=WAVE_date_setter,
-        deleter=WAVE_date_deleter,
-    )
+        Tag.RegisterKey(
+            "date",
+            id3_container,
+            getter=WAVE_date_getter,
+            setter=WAVE_date_setter,
+            deleter=WAVE_date_deleter,
+        )
 
-    # Register disc/track
-    Tag.RegisterKey("tracknumber", WAVE, *split_string("TRCK", "/", 0))
-    Tag.RegisterKey("totaltracks", WAVE, *split_string("TRCK", "/", 1))
-    Tag.RegisterKey("discnumber", WAVE, *split_string("TPOS", "/", 0))
-    Tag.RegisterKey("totaldiscs", WAVE, *split_string("TPOS", "/", 1))
+        Tag.RegisterKey("tracknumber", id3_container, *split_string("TRCK", "/", 0))
+        Tag.RegisterKey("totaltracks", id3_container, *split_string("TRCK", "/", 1))
+        Tag.RegisterKey("discnumber", id3_container, *split_string("TPOS", "/", 0))
+        Tag.RegisterKey("totaldiscs", id3_container, *split_string("TPOS", "/", 1))
+
+    # Vorbis-comment "comment"
+    # -------------------------
+    # Rockbox (upstream ab64e2653) reads DESCRIPTION -- the Vorbis comment
+    # spec's name for it, written by ffmpeg/SoX/beets/mutagen -- as the
+    # comment. With both COMMENT and DESCRIPTION present, the first one in the
+    # file wins. Writes/deletes keep targeting COMMENT.
+    def vorbis_comment_getter(tags):
+        for key, _ in tags.tags or ():
+            lowered = key.lower()
+            if lowered in ("comment", "description"):
+                return tags[lowered]
+        raise KeyError("comment")
+
+    def vorbis_comment_setter(tags, value):
+        tags["comment"] = value
+
+    def vorbis_comment_deleter(tags):
+        del tags["comment"]
+
+    for vorbis_type in (FLAC, OggVorbis, OggOpus, OggFLAC, OggSpeex):
+        Tag.RegisterKey(
+            "comment",
+            vorbis_type,
+            getter=vorbis_comment_getter,
+            setter=vorbis_comment_setter,
+            deleter=vorbis_comment_deleter,
+        )
 
     # Custom Fields (format-specific fallbacks)
     # -----------------------------------------
