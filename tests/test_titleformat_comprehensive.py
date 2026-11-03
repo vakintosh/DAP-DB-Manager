@@ -157,6 +157,46 @@ class TestField:
         res2 = f2.format(tags2)
         assert [str(v) for v in res2] == ["Adam Skorupa", "Pawe\u0142 B\u0142aszczak"]
 
+    def test_scalar_field_uses_singular_tag_like_rockbox(self):
+        """The scalar `%artist%`/`%album artist%` (the default formats) must
+        read the singular tag, as Rockbox's own metadata parser does (TPE1/
+        TPE2, \xa9ART/aART). Preferring the plural Picard tag here made one
+        act render as `A/B` (ID3, one slash-joined string) or `B, A` (MP4,
+        a list joined with ", ") depending on the container, splitting it
+        across several Album Artist entries.
+        """
+
+        def side_effect(key):
+            data = {
+                "artists": ["Artist A", "Artist B"],
+                "artist": ["Artist A & Artist B"],
+                "albumartists": ["Artist B", "Artist A"],
+                "album artist": ["Artist A & Artist B"],
+            }
+            if key in data:
+                return data[key]
+            raise KeyError(key)
+
+        tags = MagicMock()
+        tags.get_string.side_effect = side_effect
+
+        assert Field("artist").format(tags) == TagTrue("Artist A & Artist B")
+        assert Field("album artist").format(tags) == TagTrue("Artist A & Artist B")
+
+    def test_scalar_field_falls_back_to_plural_when_singular_missing(self):
+        """With no singular tag at all, the plural tag is still better than
+        falling through to composer/performer."""
+
+        def side_effect(key):
+            if key == "albumartists":
+                return ["Solo"]
+            raise KeyError(key)
+
+        tags = MagicMock()
+        tags.get_string.side_effect = side_effect
+
+        assert Field("album artist").format(tags) == TagTrue("Solo")
+
     def test_empty_plural_tag_falls_back_to_next_mapping(self):
         """Some taggers leave an *empty* ----:com.apple.iTunes:ARTISTS atom
         (value []) next to a populated \xa9ART. The empty plural tag must not
