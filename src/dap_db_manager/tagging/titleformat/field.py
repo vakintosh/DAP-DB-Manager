@@ -54,7 +54,8 @@ class Field:
     def format(self, tags):
         try:
             if self.multiple:
-                return list(map(TagTrue, self.function(tags)))
+                function = self.multi_func_map.get(self.name, self.function)
+                return list(map(TagTrue, function(tags)))
             else:
                 return TagTrue(", ".join(self.function(tags)))
         except KeyError:
@@ -73,6 +74,8 @@ class Field:
             return "%" + self.name + "%"
 
     func_map: dict[str, Callable] = {}
+    # Overrides used only by the multi-value form `%<name>%`.
+    multi_func_map: dict[str, Callable] = {}
 
     @classmethod
     def RegisterField(cls, name, function):
@@ -87,7 +90,13 @@ class Field:
         cls.RegisterField(name, getter)
 
     @classmethod
-    def RegisterMappedField(cls, name, mappings):
+    def RegisterMappedField(cls, name, mappings, multi_mappings=None):
+        cls.RegisterField(name, cls._mapped_getter(name, mappings))
+        if multi_mappings is not None:
+            cls.multi_func_map[name] = cls._mapped_getter(name, multi_mappings)
+
+    @staticmethod
+    def _mapped_getter(name, mappings):
         def getter(tags):
             first_empty = None
             for field in mappings:
@@ -107,7 +116,7 @@ class Field:
             raise KeyError(name)
 
         getter.__name__ = f"get_mapped_{name}"
-        cls.RegisterField(name, getter)
+        return getter
 
 
 # ---------------------------------------------------------------------------
@@ -133,24 +142,42 @@ for name in (
 ):
     Field.RegisterSimpleField(name)
 
-for name, fields in {
-    # "artists"/"albumartists" (plural) are listed first: MusicBrainz
-    # Picard 3.0+ writes these as *true* multi-value tags alongside the
-    # legacy single `&`-joined `artist`/`album artist` tag (issue #32).
-    # Preferring them means a `%<artist>%`/`%<album artist>%` format string
-    # fans out into the individual artists when the structured tag is
-    # present, instead of the single ambiguous joined string.
-    "artist": ["artists", "artist", "album artist", "composer", "performer"],
-    "album artist": [
-        "albumartists",
-        "album artist",
-        "albumartist",
+# Scalar `%artist%`/`%album artist%` (the defaults) read the singular tag
+# first, exactly as Rockbox's own metadata parser does (TPE1/TPE2,
+# \xa9ART/aART); it never reads Picard's plural ARTISTS/ALBUMARTISTS. Using the
+# plural tag here rendered one act as `A/B` (ID3: one slash-joined string) or
+# `B, A` (MP4: a list joined with ", ") depending on the container.
+#
+# The multi-value form `%<artist>%`/`%<album artist>%` prefers the plural
+# tag (MusicBrainz Picard 3.0+, issue #32) so it fans out into the individual
+# artists instead of the single ambiguous `&`-joined string.
+for name, scalar, multi in (
+    (
         "artist",
-        "composer",
-        "performer",
-    ],
-}.items():
-    Field.RegisterMappedField(name, fields)
+        ["artist", "artists", "album artist", "composer", "performer"],
+        ["artists", "artist", "album artist", "composer", "performer"],
+    ),
+    (
+        "album artist",
+        [
+            "album artist",
+            "albumartist",
+            "albumartists",
+            "artist",
+            "composer",
+            "performer",
+        ],
+        [
+            "albumartists",
+            "album artist",
+            "albumartist",
+            "artist",
+            "composer",
+            "performer",
+        ],
+    ),
+):
+    Field.RegisterMappedField(name, scalar, multi)
 
 
 def get_tracknumber(tags):
