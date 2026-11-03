@@ -157,6 +157,25 @@ class TestField:
         res2 = f2.format(tags2)
         assert [str(v) for v in res2] == ["Adam Skorupa", "Pawe\u0142 B\u0142aszczak"]
 
+    def test_empty_plural_tag_falls_back_to_next_mapping(self):
+        """Some taggers leave an *empty* ----:com.apple.iTunes:ARTISTS atom
+        (value []) next to a populated \xa9ART. The empty plural tag must not
+        shadow the real artist: the mapped field falls through to the next
+        candidate, exactly as if the empty tag were absent.
+        """
+
+        def side_effect(key):
+            data = {"artists": [], "artist": ["Solo Artist"], "albumartists": ["", " "]}
+            if key in data:
+                return data[key]
+            raise KeyError(key)
+
+        tags = MagicMock()
+        tags.get_string.side_effect = side_effect
+
+        assert Field("artist").format(tags) == TagTrue("Solo Artist")
+        assert Field("album artist").format(tags) == TagTrue("Solo Artist")
+
     def test_artist_falls_back_to_joined_value_without_plural_tag(self):
         """When only the legacy single `&`-joined tag exists (no `artists`
         tag), the mapped field still falls back to it -- unchanged,
